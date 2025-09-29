@@ -1,4 +1,3 @@
-<<<<<<< jimin
 # AI-Recycling-Assistant 🚮🤖
 
 [![Status](https://img.shields.io/badge/status-beta-orange.svg)](#) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](#) [![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)](#) [![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](#)
@@ -42,4 +41,3 @@ AI-Recycling-Assistant는 누구나 쉽게 재활용을 수행할 수 있도록 
 Hello I am AI Trash master.
 
 We are so cool.
->>>>>>> main
