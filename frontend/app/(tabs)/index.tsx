@@ -5,46 +5,87 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-nati
 import { useAuth } from "@store/auth";
 // 기존 FeatureCard는 사용 안 함: import 제거
 import RecycleBinButton from "@components/RecycleBinButton"; // ✅ default import
+import RoundedTitle from "@/components/RoundedTitle";
+
 
 export default function Home() {
   const { isLoggedIn, username, login, logout } = useAuth();
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      
       {/* 화면에 따옴표가 찍히지 않도록 수정 */}
-      <Text style={styles.title}>버리지 말고, 분리하자</Text>
+      // 제목 영역
+      <View style={{ paddingHorizontal: 16, paddingTop: 8 }}>
+      <RoundedTitle brand="#1AA179" /> {/* ← 로고 그린으로 교체 */}
+      </View>
 
+
+
+
+      {/* 상단 (크게) */}
       <View style={styles.tilesTop}>
-        <RecycleBinButton
-          title={"AI\n사진분석"}
-          caption="사진으로 가이드"
-          href="/(tabs)/analyze"
-          tint="#93c5fd"
-          lidColor="#60a5fa"
-        />
-      </View>
+      <RecycleBinButton
+        title={"AI\n사진분석"}
+        caption="사진으로 가이드"
+        href="/(tabs)/analyze"
+        tint="#9AC4B6"
+        lidColor="#799a8fff"
+        characterSource={require("@/assets/characters/ssdamy.png")} // 쓰담이 PNG
+        // ▼ 정면 아이콘(원형) 속 쓰담이
+        iconDiameter={56}
+        iconCharacterSize={38}
+        // ▼ 뚜껑 열릴 때 위로 튀어나오는 쓰담이
+        popCharacterSize={50}   // (기존 characterSize=68 대체)
+        popOut={24}
+        characterTopOffset={6}
+        openMode="hold"
+        navigateOnHoldRelease
+        openPreviewMs={320}
+      />
+    </View>
 
-      <View style ={styles.tilesBottom}>
-        <RecycleBinButton
-          title={"FAQ\n빠른가이드"}
-          caption="분리배출 How-To"
-          href="/(tabs)/faq"
-          tint="#fdba74"
-          lidColor="#fb923c"
-        />
-        <RecycleBinButton
-          title={"쓰담이들\n커뮤니티"}
-          caption="팁/정보 공유"
-          href="/(tabs)/community"
-          tint="#c4b5fd"
-          lidColor="#a78bfa"
-        />
-      </View>
+    {/* 하단 2개 (조금 작게) */}
+    <View style={styles.tilesBottom}>
+      <RecycleBinButton
+        title={"FAQ\n빠른가이드"}
+        caption="분리배출 How-To"
+        href="/(tabs)/faq"
+        tint="#F6F1CA"
+        lidColor="#dad5b2ff"
+        characterSource={require("@/assets/characters/ssdamy2.png")}
+        iconDiameter={48}
+        iconCharacterSize={32}
+        popCharacterSize={50}   // (기존 characterSize=34 → 살짝 키움, 원하면 34로)
+        popOut={24}
+        characterTopOffset={6}
+        openMode="hold"
+        navigateOnHoldRelease
+        openPreviewMs={320}
+      />
+      <RecycleBinButton
+        title={"쓰담이들\n커뮤니티"}
+        caption="팁/정보 공유"
+        href="/(tabs)/community"
+        tint="#83A6B3"
+        lidColor="#6b8993ff"
+        characterSource={require("@/assets/characters/ssdamy3.png")}
+        iconDiameter={48}
+        iconCharacterSize={32}
+        popCharacterSize={50}
+        popOut={24}
+        characterTopOffset={6}
+        openMode="hold"
+        navigateOnHoldRelease
+        openPreviewMs={320}
+      />
+    </View>
+
 
       {/* 로그인 전 */}
       {!isLoggedIn && (
         <View style={{ marginTop: 20 }}>
-          <Link href="/auth/login" asChild>
+          <Link href="/(auth)/login" asChild>
             <TouchableOpacity style={styles.primaryBtn}>
               <Text style={styles.primaryText}>로그인 / 회원가입</Text>
             </TouchableOpacity>
