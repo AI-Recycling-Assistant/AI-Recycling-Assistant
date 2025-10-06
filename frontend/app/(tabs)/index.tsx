@@ -20,9 +20,6 @@ export default function Home() {
       <RoundedTitle brand="#1AA179" /> {/* ← 로고 그린으로 교체 */}
       </View>
 
-
-
-
       {/* 상단 (크게) */}
       <View style={styles.tilesTop}>
       <RecycleBinButton
