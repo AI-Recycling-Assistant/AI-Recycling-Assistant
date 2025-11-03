@@ -1,9 +1,22 @@
-import { useState } from "react";
+// app/(auth)/register.tsx
+import React, { useState } from "react";
 import {
-  View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, Switch, ActivityIndicator,
+  View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Switch, KeyboardAvoidingView, Platform,
 } from "react-native";
-import { useRouter, Stack } from "expo-router";
-import { register as apiRegister } from "@/src/features/auth/api"; // ✅ 백엔드 회원가입 API
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { register as apiRegister } from "@/src/features/auth/api";
+
+const COLORS = {
+  bg: "#F7F9FB",
+  card: "#FFFFFF",
+  text: "#0F172A",
+  sub: "#64748B",
+  primary: "#10B981",
+  primaryDark: "#059669",
+  border: "#E2E8F0",
+  error: "#EF4444",
+};
 
 const PW_RULE = /^(?=.*[a-z])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>/?`~]).{8,}$/;
 
@@ -15,21 +28,21 @@ export default function RegisterScreen() {
   const [nickname, setNickname] = useState("");
   const [agree, setAgree] = useState(false);
 
-  // 데모 중복확인(실제 API 연결 시 이 부분만 교체)
   const [idOk, setIdOk] = useState<null | boolean>(null);
   const [nickOk, setNickOk] = useState<null | boolean>(null);
 
+  const [focus, setFocus] = useState<null | string>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const fakeCheckId = () => {
+  const checkId = () => {
     if (!id.trim()) return Alert.alert("확인", "아이디를 입력해주세요.");
     const ok = id.trim().length >= 4;
     setIdOk(ok);
     Alert.alert("아이디 중복확인", ok ? "사용 가능(데모)" : "사용 불가(데모)");
   };
 
-  const fakeCheckNick = () => {
+  const checkNick = () => {
     if (!nickname.trim()) return Alert.alert("확인", "닉네임을 입력해주세요.");
     const ok = nickname.trim().length >= 2;
     setNickOk(ok);
@@ -52,154 +65,211 @@ export default function RegisterScreen() {
 
     try {
       setLoading(true);
-      // ✅ 백엔드 회원가입 호출
-      // 요청 예시: { id, pw, name, nickname }
-      // 응답 예시: { ok: true } 또는 { user: {...} }
-      await apiRegister({ username: _id, password: pw, nickname: _nickname });
-
+      await apiRegister({ id: _id, pw, name: _name, nickname: _nickname });
       Alert.alert("가입 완료", "로그인 화면으로 이동합니다.", [
         { text: "확인", onPress: () => router.replace("/(auth)/login") },
       ]);
     } catch (e: any) {
-      const msg = e?.response?.data?.message ?? "회원가입 중 오류가 발생했습니다.";
-      Alert.alert("오류", msg);
+      Alert.alert("오류", e?.message ?? "회원가입 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <View style={s.container}>
-      {/* 상단 헤더 완전 제거(루트/그룹에서 꺼뒀으면 생략 가능) */}
-      <Stack.Screen options={{ headerShown: false }} />
+    <KeyboardAvoidingView style={s.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <View style={s.centerWrap}>
+        {/* 헤더 */}
+        <View style={s.header}>
+          <Text style={s.title}>회원가입</Text>
+          <Text style={s.caption}>사진으로 분리배출을 더 쉽게</Text>
+        </View>
 
-      <Text style={s.title}>회원가입</Text>
+        {/* 카드 */}
+        <View style={s.card}>
+          <InputWithIcon
+            label="이름"
+            icon="person-outline"
+            value={name}
+            onChangeText={setName}
+            onFocus={() => setFocus("name")}
+            onBlur={() => setFocus(null)}
+            focused={focus === "name"}
+          />
 
-      <LabeledInput label="이름" value={name} onChangeText={setName} />
+          <InputWithButton
+            label="아이디"
+            icon="at-outline"
+            value={id}
+            onChangeText={(t: string) => { setId(t); setIdOk(null); }}
+            buttonText="중복확인"
+            onPress={checkId}
+            focused={focus === "id"}
+            onFocus={() => setFocus("id")}
+            onBlur={() => setFocus(null)}
+          />
+          {idOk !== null && (
+            <Text style={[s.helper, { color: idOk ? COLORS.primaryDark : COLORS.error }]}>
+              {idOk ? "사용 가능(데모)" : "사용 불가(데모)"}
+            </Text>
+          )}
 
-      <RowWithButton
-        label="아이디"
-        value={id}
-        onChangeText={(t: string) => { setId(t); setIdOk(null); }}
-        buttonText="중복확인"
-        onPress={fakeCheckId}   // ← 실제 API 있으면 여기만 바꾸면 됨
-        checked={idOk}
-      />
+          <InputWithIcon
+            label="비밀번호"
+            icon="lock-closed-outline"
+            value={pw}
+            onChangeText={setPw}
+            secureTextEntry
+            placeholder="영 소문자·특수문자 포함 8자리 이상"
+            onFocus={() => setFocus("pw")}
+            onBlur={() => setFocus(null)}
+            focused={focus === "pw"}
+          />
+          <InputWithIcon
+            label="비밀번호 확인"
+            icon="lock-closed-outline"
+            value={pw2}
+            onChangeText={setPw2}
+            secureTextEntry
+            onFocus={() => setFocus("pw2")}
+            onBlur={() => setFocus(null)}
+            focused={focus === "pw2"}
+          />
 
-      <LabeledInput
-        label="비밀번호"
-        value={pw}
-        onChangeText={setPw}
-        secureTextEntry
-        placeholder="영 소문자·특수문자 포함 8자리 이상"
-      />
-      <LabeledInput
-        label="비밀번호 확인"
-        value={pw2}
-        onChangeText={setPw2}
-        secureTextEntry
-      />
+          <InputWithButton
+            label="닉네임"
+            icon="happy-outline"
+            value={nickname}
+            onChangeText={(t: string) => { setNickname(t); setNickOk(null); }}
+            buttonText="중복확인"
+            onPress={checkNick}
+            focused={focus === "nick"}
+            onFocus={() => setFocus("nick")}
+            onBlur={() => setFocus(null)}
+          />
+          {nickOk !== null && (
+            <Text style={[s.helper, { color: nickOk ? COLORS.primaryDark : COLORS.error }]}>
+              {nickOk ? "사용 가능(데모)" : "사용 불가(데모)"}
+            </Text>
+          )}
 
-      <RowWithButton
-        label="닉네임"
-        value={nickname}
-        onChangeText={(t: string) => { setNickname(t); setNickOk(null); }}
-        buttonText="중복확인"
-        onPress={fakeCheckNick} // ← 실제 API 있으면 교체
-        checked={nickOk}
-      />
+          {/* 약관 동의 */}
+          <View style={s.agreeRow}>
+            <Switch
+              value={agree}
+              onValueChange={setAgree}
+              trackColor={{ false: "#E5E7EB", true: COLORS.primary }}
+              thumbColor="#FFFFFF"
+            />
+            <Text style={s.agreeText}>개인정보 약관 동의</Text>
+          </View>
 
-      <View style={s.agreeRow}>
-        <Switch
-          value={agree}
-          onValueChange={setAgree}
-          trackColor={{ false: "#E5E7EB", true: "#1AA179" }}
-          thumbColor="#FFFFFF"
-        />
-        <Text style={s.agreeText}>개인정보 약관 동의</Text>
+          {/* 제출 */}
+          <TouchableOpacity style={[s.primaryBtn, loading && { opacity: 0.7 }]} onPress={handleSubmit} disabled={loading}>
+            {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>가입 완료</Text>}
+          </TouchableOpacity>
+        </View>
       </View>
-
-      <TouchableOpacity style={[s.primaryBtn, loading && { opacity: 0.6 }]} onPress={handleSubmit} disabled={loading}>
-        {loading ? <ActivityIndicator /> : <Text style={s.primaryText}>완료</Text>}
-      </TouchableOpacity>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
-/* 공용 컴포넌트들 – 로그인 톤과 동일 */
-function LabeledInput(props: any) {
-  return (
-    <View style={{ gap: 6 }}>
-      <Text style={s.label}>{props.label}</Text>
-      <TextInput
-        {...props}
-        style={[s.input, props.style]}
-        placeholderTextColor="#6B7280"
-        autoCapitalize="none"
-      />
-    </View>
-  );
-}
-
-function RowWithButton({
-  label, value, onChangeText, buttonText, onPress, checked,
+/* --- 재사용 입력 컴포넌트들 --- */
+function InputWithIcon({
+  label, icon, focused, style, ...rest
 }: any) {
   return (
-    <View style={{ gap: 6 }}>
+    <View style={{ marginBottom: 12 }}>
       <Text style={s.label}>{label}</Text>
-      <View style={s.row}>
-        <TextInput
-          style={[s.input, { flex: 1 }]}
-          value={value}
-          onChangeText={onChangeText}
-          placeholderTextColor="#6B7280"
-          autoCapitalize="none"
-        />
+      <View style={[s.inputWrap, focused && s.inputWrapActive, style]}>
+        <Ionicons name={icon} size={20} color={focused ? COLORS.primaryDark : COLORS.sub} style={s.inputIcon} />
+        <TextInput {...rest} style={s.input} placeholderTextColor="#94A3B8" autoCapitalize="none" />
+      </View>
+    </View>
+  );
+}
+
+function InputWithButton({
+  label, icon, buttonText, onPress, focused, style, ...rest
+}: any) {
+  return (
+    <View style={{ marginBottom: 8 }}>
+      <Text style={s.label}>{label}</Text>
+      <View style={[s.row, style]}>
+        <View style={[s.inputWrap, focused && s.inputWrapActive, { flex: 1 }]}>
+          <Ionicons name={icon} size={20} color={focused ? COLORS.primaryDark : COLORS.sub} style={s.inputIcon} />
+          <TextInput {...rest} style={s.input} placeholderTextColor="#94A3B8" autoCapitalize="none" />
+        </View>
         <TouchableOpacity style={s.smallBtn} onPress={onPress}>
           <Text style={s.smallBtnText}>{buttonText}</Text>
         </TouchableOpacity>
       </View>
-      {checked !== null && (
-        <Text style={{ color: checked ? "#059669" : "#EF4444", fontSize: 12 }}>
-          {checked ? "사용 가능(데모)" : "사용 불가(데모)"}
-        </Text>
-      )}
     </View>
   );
 }
 
+/* --- 스타일 --- */
 const s = StyleSheet.create({
-  container: { flex: 1, padding: 20, gap: 14, backgroundColor: "#FFFFFF" },
-  title: { fontSize: 22, fontWeight: "700", color: "#111827", marginBottom: 12 },
-  label: { color: "#6B7280", fontSize: 14, marginTop: 8, marginBottom: 2 },
-  input: {
-    height: 48,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",          // 연한 보더
-    backgroundColor: "#FFFFFF",      // 밝은 입력창
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    color: "#111827",                // 입력 텍스트
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  centerWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
+  header: { alignItems: "center", marginBottom: 14 },
+  brand: { fontFamily: "Jua_400Regular", color: COLORS.text, fontSize: 18, letterSpacing: 0.3 },
+  title: { fontFamily: "Jua_400Regular", color: COLORS.text, fontSize: 30, marginTop: 2 },
+  caption: { color: COLORS.sub, marginTop: 4, fontSize: 13 },
+
+  card: {
+    width: "100%",
+    maxWidth: 520,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 18,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 10,
+    elevation: 2,
   },
-  row: { flexDirection: "row", gap: 8, alignItems: "center" },
-  smallBtn: {
-    paddingHorizontal: 12,
-    height: 44,
+
+  label: { color: COLORS.sub, fontSize: 13, marginBottom: 6 },
+
+  row: { flexDirection: "row", alignItems: "center", gap: 8 },
+
+  inputWrap: {
+    height: 52,
     borderRadius: 12,
-    backgroundColor: "#111827",      // 홈/로그인과 동일 톤
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: "#FFF",
+    paddingLeft: 44,
+    paddingRight: 14,
+    justifyContent: "center",
+  },
+  inputWrapActive: { borderColor: COLORS.primary, shadowColor: COLORS.primary, shadowOpacity: 0.08, shadowRadius: 6 },
+  inputIcon: { position: "absolute", left: 14 },
+  input: { fontSize: 16, color: COLORS.text },
+
+  helper: { fontSize: 12, marginTop: 4 },
+
+  smallBtn: {
+    height: 48,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    backgroundColor: COLORS.text,
     alignItems: "center",
     justifyContent: "center",
   },
-  smallBtnText: { color: "#fff", fontWeight: "700" },
-  agreeRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
-  agreeText: { color: "#111827" },
+  smallBtnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
+
+  agreeRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6, marginBottom: 6 },
+  agreeText: { color: COLORS.text },
+
   primaryBtn: {
     height: 52,
     borderRadius: 14,
-    backgroundColor: "#111827",      // 메인 액션 버튼 컬러 통일
+    backgroundColor: COLORS.primary,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 12,
+    marginTop: 10,
   },
   primaryText: { color: "#fff", fontWeight: "700", fontSize: 16 },
 });

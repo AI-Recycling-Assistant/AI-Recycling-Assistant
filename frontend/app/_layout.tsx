@@ -46,6 +46,7 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
+         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         {/* ✅ 홈(index)만 헤더 표시 + 가운데 로고 */}
         <Stack.Screen
           name="(tabs)/index"
@@ -54,6 +55,7 @@ function RootLayoutNav() {
             headerTitleAlign: 'center',
             headerTitle: () => <HeaderLogo  height={28} />,
           }}
+          
         />
         {/* 탭 그룹(내부 화면)은 헤더 숨김 */}
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
