@@ -1,20 +1,50 @@
+// app/(auth)/login.tsx  또는 경로에 맞게 배치
 import { useState } from "react";
-import { View, Text, TextInput, StyleSheet, TouchableOpacity, Alert } from "react-native";
+import {
+  View, Text, TextInput, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
+} from "react-native";
 import { Link, useRouter } from "expo-router";
+import { login as apiLogin } from "@/src/features/auth/api";   // ✅ POST /login { id, pw }
+import { useAuth } from "@store/auth";                     // ✅ Zustand: { isLoggedIn, username, login(name), logout() }
 
 export default function LoginScreen() {
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleLogin = () => {
-    if (!id.trim() || !pw) {
+  const doLogin = useAuth(s => s.login); // login(name: string)
+
+  const handleLogin = async () => {
+    const _id = id.trim();
+    if (!_id || !pw) {
       return Alert.alert("확인", "아이디와 비밀번호를 모두 입력해주세요.");
     }
-    // ★ API 없이 임시 성공 처리
-    Alert.alert("로그인", "프론트 전용 데모입니다. 홈으로 이동합니다.", [
-      { text: "확인", onPress: () => router.replace("/") },
-    ]);
+
+    try {
+      setLoading(true);
+
+      // 🔐 백엔드 로그인 요청: POST /login  (payload: { id, pw })
+      const res = await apiLogin({ id: _id, pw });
+
+      // 응답 스펙은 팀 명세에 맞춰 사용 (예: res.ok, res.token 등)
+      if (res?.ok === false) {
+        return Alert.alert("로그인 실패", "아이디 또는 비밀번호를 확인해주세요.");
+      }
+
+      // (선택) 토큰 저장이 필요하면 여기서 SecureStore 등으로 저장
+      // if (res.token) await SecureStore.setItemAsync("accessToken", res.token);
+
+      // ✅ 전역 상태에 로그인 반영 (임시로 id를 표시 이름으로 사용)
+      doLogin(_id);
+
+      // 홈으로 이동
+      router.replace("/");
+    } catch (e: any) {
+      Alert.alert("오류", e?.message ?? "로그인 중 오류가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -40,8 +70,12 @@ export default function LoginScreen() {
         onChangeText={setPw}
       />
 
-      <TouchableOpacity style={s.primaryBtn} onPress={handleLogin}>
-        <Text style={s.primaryText}>로그인</Text>
+      <TouchableOpacity
+        style={[s.primaryBtn, loading && { opacity: 0.6 }]}
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        {loading ? <ActivityIndicator /> : <Text style={s.primaryText}>로그인</Text>}
       </TouchableOpacity>
 
       <Link href="/(auth)/register" asChild>
