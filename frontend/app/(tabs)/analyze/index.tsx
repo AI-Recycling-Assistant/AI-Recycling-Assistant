@@ -9,6 +9,12 @@ export default function AnalyzeEntry() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
 
+  /** editor로 안전하게 이동 (객체 라우팅) */
+  const goEditor = useCallback((uri: string) => {
+    router.push({ pathname: "/analyze/editor", params: { uri } });
+  }, [router]);
+
+  /** 권한 헬퍼 */
   const ensureCameraPerm = useCallback(async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== "granted") {
@@ -27,40 +33,54 @@ export default function AnalyzeEntry() {
     return true;
   }, []);
 
-  const goPreview = (uri: string) => {
-    router.push(`/analyze/preview?uri=${encodeURIComponent(uri)}` as never);
-  };
-
+  /** 촬영 */
   const onTakePhoto = useCallback(async () => {
     try {
       setBusy(true);
       if (!(await ensureCameraPerm())) return;
-      const result = await ImagePicker.launchCameraAsync({
+
+      const res = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 0.9,
       });
-      if (!result.canceled && result.assets?.[0]?.uri) goPreview(result.assets[0].uri);
+      console.log("[takePhoto]", res);
+
+      if (!res.canceled && res.assets?.[0]?.uri) {
+        goEditor(res.assets[0].uri);
+      }
+    } catch (e) {
+      console.error(e);
+      Alert.alert("오류", "사진 촬영 중 문제가 발생했습니다.");
     } finally {
       setBusy(false);
     }
-  }, [ensureCameraPerm]);
+  }, [ensureCameraPerm, goEditor]);
 
+  /** 갤러리 */
   const onPickFromGallery = useCallback(async () => {
     try {
       setBusy(true);
       if (!(await ensureLibraryPerm())) return;
-      const result = await ImagePicker.launchImageLibraryAsync({
+
+      const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: false,
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 0.9,
       });
-      if (!result.canceled && result.assets?.[0]?.uri) goPreview(result.assets[0].uri);
+      console.log("[pickFromGallery]", res);
+
+      if (!res.canceled && res.assets?.[0]?.uri) {
+        goEditor(res.assets[0].uri);
+      }
+    } catch (e) {
+      console.error(e);
+      Alert.alert("오류", "갤러리에서 불러오는 중 문제가 발생했습니다.");
     } finally {
       setBusy(false);
     }
-  }, [ensureLibraryPerm]);
+  }, [ensureLibraryPerm, goEditor]);
 
   return (
     <View style={styles.container}>
@@ -73,14 +93,24 @@ export default function AnalyzeEntry() {
 
         <View style={{ height: 20 }} />
 
-        <TouchableOpacity style={[styles.button, styles.btnGreen]} onPress={onTakePhoto} disabled={busy} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={[styles.button, styles.btnGreen]}
+          onPress={onTakePhoto}
+          disabled={busy}
+          activeOpacity={0.85}
+        >
           <Ionicons name="camera-outline" size={22} color="#0b2b17" style={styles.iconLeft} />
-          <Text style={[styles.btnText]}>촬영</Text>
+          <Text style={styles.btnText}>촬영</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.button, styles.btnYellow]} onPress={onPickFromGallery} disabled={busy} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={[styles.button, styles.btnYellow]}
+          onPress={onPickFromGallery}
+          disabled={busy}
+          activeOpacity={0.85}
+        >
           <Ionicons name="image-outline" size={22} color="#3a2a00" style={styles.iconLeft} />
-          <Text style={[styles.btnText]}>갤러리</Text>
+          <Text style={styles.btnText}>갤러리</Text>
         </TouchableOpacity>
 
         {busy && <ActivityIndicator size="large" style={{ marginTop: 16 }} />}
@@ -98,10 +128,9 @@ const COLORS = {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF", paddingHorizontal: 20 },
-  centerWrap: { flex: 1, justifyContent: "center", alignItems: "center" }, // ✅ 세로/가로 중앙
+  centerWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
   titleWrap: { alignItems: "center", gap: 6, marginBottom: 8 },
 
-  // ✅ Jua 적용 (홈과 동일 키 사용)
   brand: {
     fontFamily: "Jua_400Regular",
     fontSize: 18,
