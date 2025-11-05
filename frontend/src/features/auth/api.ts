@@ -1,73 +1,49 @@
 // src/features/auth/api.ts
 import { http } from "@/src/utils/http";
 
-/** API에서 쓰는 공통 타입들 (필요에 맞게 조정하세요) */
-export type RegisterRequest = {
-  username: string;        // 아이디(또는 이메일) - 명세에 맞게 필드명 조정
-  password: string;
-  nickname?: string;
-};
-
-export type RegisterResponse = {
-  id: number | string;
-  username: string;
-  nickname?: string;
-  createdAt?: string;
-};
-
+// ===== 타입 (표 기준) =====
 export type LoginRequest = {
-  username: string;        // 명세가 email이면 email로 바꾸세요
-  password: string;
+  id: string;
+  pw: string;
 };
-
 export type LoginResponse = {
-  accessToken: string;
-  refreshToken?: string;
-  user?: {
-    id: number | string;
-    username: string;
-    nickname?: string;
-  };
+  ok: boolean;
+  token?: string;    // 서버 응답 스펙에 맞춰 조정
+  userId?: number | string;
 };
 
-export type Profile = {
-  id: number | string;
-  username: string;
-  nickname?: string;
+export type RegisterRequest = {
+  id: string;
+  pw: string;
+  name: string;
+  nickname?: string; // 표 '객체'엔 없지만 상세설명에 있어 선택값으로 허용
+};
+export type RegisterResponse = {
+  ok: boolean;
+  userId?: number | string;
 };
 
-/** 회원가입 */
-export async function register(payload: RegisterRequest) {
-  // 예: POST /api/auth/register
-  return http<RegisterResponse>("/api/auth/register", {
-    method: "POST",
-    body: payload,
-  });
-}
+// ===== API =====
 
-/** 로그인 */
+// 로그인 처리: POST /login  (바디 { id, pw })
 export async function login(payload: LoginRequest) {
-  // 예: POST /api/auth/login
-  return http<LoginResponse>("/api/auth/login", {
+  return http<LoginResponse>("/login", {
     method: "POST",
     body: payload,
   });
 }
 
-/** 내 정보 조회 (토큰 필요) */
-export async function getProfile(token: string) {
-  // 예: GET /api/auth/me
-  return http<Profile>("/api/auth/me", {
-    method: "GET",
-    authToken: token,
-  });
-}
+// 회원가입 처리: POST /register (바디 { id, pw, name } [+ nickname?])
+export async function register(payload: RegisterRequest) {
+  const body = {
+    id: payload.id,
+    pw: payload.pw,
+    name: payload.name,
+    ...(payload.nickname ? { nickname: payload.nickname } : {}),
+  };
 
-/** 로그아웃 (서버 세션/리프레시 토큰 무효화가 있다면) */
-export async function logout(token?: string) {
-  // 예: POST /api/auth/logout
-  return http<void>("/api/auth/logout", {
+  return http<RegisterResponse>("/register", {
     method: "POST",
-    authToken: token || null,
+    body,
   });
 }
