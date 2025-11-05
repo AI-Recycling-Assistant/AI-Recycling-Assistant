@@ -2,7 +2,7 @@
 console.log("[TabsLayout] loaded");
 import { Tabs } from "expo-router";
 import HeaderLogo from "@components/HeaderLogo";
-
+// 수정
 export default function TabsLayout() {
   return (
     <Tabs
