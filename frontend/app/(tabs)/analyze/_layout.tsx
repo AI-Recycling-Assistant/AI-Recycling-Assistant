@@ -21,6 +21,8 @@ export default function AnalyzeLayout() {
       <Stack.Screen name="editor"  options={{ title: "" }} />
       <Stack.Screen name="preview" options={{ title: "" }} />
       <Stack.Screen name="result"  options={{ title: "" }} />
+      <Stack.Screen name="progress" options={{ title: "" }} />
+      <Stack.Screen name="confirm"  options={{ title: "" }} />
     </Stack>
   );
 }
