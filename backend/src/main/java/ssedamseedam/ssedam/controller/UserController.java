@@ -4,12 +4,14 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import ssedamseedam.ssedam.dto.UserLoginRequest;
 import ssedamseedam.ssedam.dto.UserSignupRequest;
 import ssedamseedam.ssedam.service.UserService;
 
 import java.util.Map;
 
+@CrossOrigin(origins = "http://localhost:8081")
 @RestController
 @RequestMapping("/api/users")
 @RequiredArgsConstructor
