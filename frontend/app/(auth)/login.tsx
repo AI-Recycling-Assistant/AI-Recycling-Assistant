@@ -31,11 +31,21 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     const _id = id.trim();
-    if (!_id || !pw) return Alert.alert("확인", "아이디와 비밀번호를 모두 입력해주세요.");
+    if (!_id || !pw) {
+      return Alert.alert("확인", "아이디와 비밀번호를 모두 입력해주세요.");
+    }
+
     try {
       setLoading(true);
-      const res = await apiLogin({ id: _id, pw });
-      if (res?.ok === false) return Alert.alert("로그인 실패", "아이디 또는 비밀번호를 확인해주세요.");
+
+      // ✅ api.ts의 LoginRequest 타입(username, password)에 맞게 수정
+      await apiLogin({
+        username: _id,
+        password: pw,
+      });
+
+      // 백엔드에서 아이디/비밀번호가 틀리면 http.ts에서 에러를 throw 하기 때문에
+      // 여기까지 오면 "로그인 성공"으로 간주해도 됩니다.
       doLogin(_id);
       router.replace("/");
     } catch (e: any) {
@@ -46,70 +56,102 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={s.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <View style={s.centerWrap}>
-        {/* 헤더 */}
-        <View style={s.header}>
-          <Text style={s.title}>로그인</Text>
-          <Text style={s.caption}>사진으로 분리배출을 더 쉽게</Text>
-        </View>
-
-        {/* 카드 */}
-        <View style={s.card}>
-          {/* 아이디 */}
-          <View style={[s.inputWrap, focus === "id" && s.inputWrapActive]}>
-            <Ionicons name="person-outline" size={20} color={focus === "id" ? COLORS.primaryDark : COLORS.sub} style={s.inputIcon} />
-            <TextInput
-              style={s.input}
-              value={id}
-              onChangeText={setId}
-              placeholder="아이디"
-              placeholderTextColor="#94A3B8"
-              autoCapitalize="none"
-              onFocus={() => setFocus("id")}
-              onBlur={() => setFocus(null)}
-              returnKeyType="next"
-            />
+      <KeyboardAvoidingView
+          style={s.container}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View style={s.centerWrap}>
+          {/* 헤더 */}
+          <View style={s.header}>
+            <Text style={s.title}>로그인</Text>
+            <Text style={s.caption}>사진으로 분리배출을 더 쉽게</Text>
           </View>
 
-          {/* 비밀번호 */}
-          <View style={[s.inputWrap, focus === "pw" && s.inputWrapActive, { marginTop: 14 }]}>
-            <Ionicons name="lock-closed-outline" size={20} color={focus === "pw" ? COLORS.primaryDark : COLORS.sub} style={s.inputIcon} />
-            <TextInput
-              style={s.input}
-              value={pw}
-              onChangeText={setPw}
-              placeholder="비밀번호"
-              placeholderTextColor="#94A3B8"
-              autoCapitalize="none"
-              secureTextEntry
-              onFocus={() => setFocus("pw")}
-              onBlur={() => setFocus(null)}
-              returnKeyType="done"
-              onSubmitEditing={handleLogin}
-            />
-          </View>
+          {/* 카드 */}
+          <View style={s.card}>
+            {/* 아이디 */}
+            <View style={[s.inputWrap, focus === "id" && s.inputWrapActive]}>
+              <Ionicons
+                  name="person-outline"
+                  size={20}
+                  color={focus === "id" ? COLORS.primaryDark : COLORS.sub}
+                  style={s.inputIcon}
+              />
+              <TextInput
+                  style={s.input}
+                  value={id}
+                  onChangeText={setId}
+                  placeholder="아이디"
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="none"
+                  onFocus={() => setFocus("id")}
+                  onBlur={() => setFocus(null)}
+                  returnKeyType="next"
+              />
+            </View>
 
-          {/* 로그인 버튼 */}
-          <TouchableOpacity style={[s.primaryBtn, loading && { opacity: 0.7 }]} onPress={handleLogin} disabled={loading}>
-            {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.primaryText}>로그인</Text>}
-          </TouchableOpacity>
+            {/* 비밀번호 */}
+            <View
+                style={[
+                  s.inputWrap,
+                  focus === "pw" && s.inputWrapActive,
+                  { marginTop: 14 },
+                ]}
+            >
+              <Ionicons
+                  name="lock-closed-outline"
+                  size={20}
+                  color={focus === "pw" ? COLORS.primaryDark : COLORS.sub}
+                  style={s.inputIcon}
+              />
+              <TextInput
+                  style={s.input}
+                  value={pw}
+                  onChangeText={setPw}
+                  placeholder="비밀번호"
+                  placeholderTextColor="#94A3B8"
+                  autoCapitalize="none"
+                  secureTextEntry
+                  onFocus={() => setFocus("pw")}
+                  onBlur={() => setFocus(null)}
+                  returnKeyType="done"
+                  onSubmitEditing={handleLogin}
+              />
+            </View>
 
-          {/* 보조 링크 */}
-          <Link href="/(auth)/register" asChild>
-            <TouchableOpacity style={s.linkBtn}>
-              <Text style={s.linkText}>아직 회원가입을 안하셨나요?</Text>
+            {/* 로그인 버튼 */}
+            <TouchableOpacity
+                style={[s.primaryBtn, loading && { opacity: 0.7 }]}
+                onPress={handleLogin}
+                disabled={loading}
+            >
+              {loading ? (
+                  <ActivityIndicator color="#fff" />
+              ) : (
+                  <Text style={s.primaryText}>로그인</Text>
+              )}
             </TouchableOpacity>
-          </Link>
+
+            {/* 보조 링크 */}
+            <Link href="/(auth)/register" asChild>
+              <TouchableOpacity style={s.linkBtn}>
+                <Text style={s.linkText}>아직 회원가입을 안하셨나요?</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-  centerWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
+  centerWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
   header: { alignItems: "center", marginBottom: 14 },
   brand: {
     fontFamily: "Jua_400Regular",
@@ -148,7 +190,12 @@ const s = StyleSheet.create({
     paddingRight: 14,
     justifyContent: "center",
   },
-  inputWrapActive: { borderColor: COLORS.primary, shadowColor: COLORS.primary, shadowOpacity: 0.08, shadowRadius: 6 },
+  inputWrapActive: {
+    borderColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+  },
   inputIcon: { position: "absolute", left: 14 },
   input: { fontSize: 16, color: COLORS.text },
 
@@ -161,6 +208,11 @@ const s = StyleSheet.create({
     marginTop: 18,
   },
   primaryText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+
   linkBtn: { paddingVertical: 12, alignItems: "center" },
-  linkText: { color: COLORS.primaryDark, textDecorationLine: "underline", fontSize: 13 },
+  linkText: {
+    color: COLORS.primaryDark,
+    textDecorationLine: "underline",
+    fontSize: 13,
+  },
 });

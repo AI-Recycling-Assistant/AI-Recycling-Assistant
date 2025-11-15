@@ -1,49 +1,48 @@
 // src/features/auth/api.ts
 import { http } from "@/src/utils/http";
 
-// ===== 타입 (표 기준) =====
+// 로그인 요청 타입
 export type LoginRequest = {
-  id: string;
-  pw: string;
+  username: string;
+  password: string;
 };
 export type LoginResponse = {
-  ok: boolean;
-  token?: string;    // 서버 응답 스펙에 맞춰 조정
-  userId?: number | string;
+  message: string; // "로그인 성공"
 };
 
+// 회원가입 요청 타입
 export type RegisterRequest = {
-  id: string;
-  pw: string;
   name: string;
-  nickname?: string; // 표 '객체'엔 없지만 상세설명에 있어 선택값으로 허용
+  username: string;
+  password: string;
+  passwordCheck: string;
+  nickname: string;
 };
 export type RegisterResponse = {
-  ok: boolean;
-  userId?: number | string;
+  message: string; // "회원가입 성공"
 };
 
-// ===== API =====
-
-// 로그인 처리: POST /login  (바디 { id, pw })
+// 로그인: POST /api/users/login
 export async function login(payload: LoginRequest) {
-  return http<LoginResponse>("/login", {
+  return http<LoginResponse>("/api/users/login", {
     method: "POST",
-    body: payload,
+    body: {
+      username: payload.username,
+      password: payload.password,
+    },
   });
 }
 
-// 회원가입 처리: POST /register (바디 { id, pw, name } [+ nickname?])
+// 회원가입: POST /api/users/signup
 export async function register(payload: RegisterRequest) {
-  const body = {
-    id: payload.id,
-    pw: payload.pw,
-    name: payload.name,
-    ...(payload.nickname ? { nickname: payload.nickname } : {}),
-  };
-
-  return http<RegisterResponse>("/register", {
+  return http<RegisterResponse>("/api/users/signup", {
     method: "POST",
-    body,
+    body: {
+      name: payload.name,
+      username: payload.username,
+      password: payload.password,
+      passwordCheck: payload.passwordCheck,
+      nickname: payload.nickname,
+    },
   });
 }
