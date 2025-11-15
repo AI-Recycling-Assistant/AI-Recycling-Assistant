@@ -65,7 +65,15 @@ export default function RegisterScreen() {
 
     try {
       setLoading(true);
-      await apiRegister({ id: _id, pw, name: _name, nickname: _nickname });
+      // ✅ 여기만 이렇게 변경
+      await apiRegister({
+        name: _name,
+        username: _id,       // <- 백엔드 DTO: username
+        password: pw,        // <- password
+        passwordCheck: pw2,  // <- passwordCheck
+        nickname: _nickname,
+      });
+
       Alert.alert("가입 완료", "로그인 화면으로 이동합니다.", [
         { text: "확인", onPress: () => router.replace("/(auth)/login") },
       ]);
