@@ -2,6 +2,8 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useState } from "react";
+import { useRouter } from "expo-router";
+import { useFaqList } from "../../src/features/faq/hooks";
 
 type FAQCategory = {
   id: string;
@@ -20,23 +22,31 @@ const FAQ_CATEGORIES: FAQCategory[] = [
   { id: "etc", title: "기타", icon: "help-circle-outline", color: "#8B5CF6", count: 9 },
 ];
 
-const FAQ_QUESTIONS = [
-  { id: 1, question: "플라스틱 용기에 라벨을 떼야 하나요?", category: "plastic", categoryName: "플라스틱", helpful: 124 },
-  { id: 2, question: "음식물이 묻은 종이는 어떻게 버리나요?", category: "paper", categoryName: "종이류", helpful: 89 },
-  { id: 3, question: "깨진 유리병도 재활용이 가능한가요?", category: "glass", categoryName: "유리병", helpful: 67 },
-  { id: 4, question: "캔에 붙은 라벨은 어떻게 처리하나요?", category: "metal", categoryName: "캔류", helpful: 45 },
-  { id: 5, question: "플라스틱 뚜껑과 본체를 분리해야 하나요?", category: "plastic", categoryName: "플라스틱", helpful: 156 },
-  { id: 6, question: "코팅된 종이컵은 재활용이 되나요?", category: "paper", categoryName: "종이류", helpful: 78 },
-  { id: 7, question: "일회용 기저귀는 어떻게 버리나요?", category: "general", categoryName: "일반쓰레기", helpful: 92 },
-  { id: 8, question: "전자제품은 어디에 버려야 하나요?", category: "etc", categoryName: "기타", helpful: 134 },
-  { id: 9, question: "페트병 라벨 제거가 필수인가요?", category: "plastic", categoryName: "플라스틱", helpful: 201 },
-  { id: 10, question: "우유팩은 어떻게 분리배출 하나요?", category: "paper", categoryName: "종이류", helpful: 167 },
-];
+
 
 export default function FAQMainScreen() {
   const [fontsLoaded] = useFonts({ Jua_400Regular });
   const [searchText, setSearchText] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("전체");
+  const router = useRouter();
+  
+  const categoryMap: { [key: string]: string } = {
+    "플라스틱": "plastic",
+    "종이류": "paper", 
+    "유리병": "glass",
+    "캔류": "metal",
+    "일반쓰레기": "general",
+    "기타": "etc"
+  };
+  
+  const { data: faqData, isLoading } = useFaqList({
+    q: searchText || undefined,
+    category: selectedCategory === "전체" ? undefined : categoryMap[selectedCategory],
+    page: 0,
+    size: 20
+  });
+  
+  const faqs = faqData?.content || [];
 
   if (!fontsLoaded) return null;
 
@@ -97,22 +107,32 @@ export default function FAQMainScreen() {
 
       {/* 질문 목록 */}
       <View style={styles.questionsList}>
-        {FAQ_QUESTIONS.filter(faq => selectedCategory === "전체" || faq.categoryName === selectedCategory).map((faq) => (
-          <TouchableOpacity key={faq.id} style={styles.questionItem}>
-            <View style={styles.questionContent}>
-              <Text style={styles.questionText}>{faq.question}</Text>
-              <View style={styles.questionMeta}>
-                <View style={styles.categoryTag}>
-                  <Text style={styles.categoryTagText}>{faq.categoryName}</Text>
-                </View>
-                <View style={styles.helpfulInfo}>
-                  <Ionicons name="thumbs-up-outline" size={12} color="#6B7280" />
-                  <Text style={styles.helpfulText}>도움됨 {faq.helpful}</Text>
+        {isLoading ? (
+          <Text style={styles.loadingText}>로딩 중...</Text>
+        ) : faqs.length === 0 ? (
+          <Text style={styles.emptyText}>검색 결과가 없습니다.</Text>
+        ) : (
+          faqs.map((faq: any) => (
+            <TouchableOpacity 
+              key={faq.id} 
+              style={styles.questionItem}
+              onPress={() => router.push(`/faq/faq-detail?id=${faq.id}`)}
+            >
+              <View style={styles.questionContent}>
+                <Text style={styles.questionText}>{faq.question}</Text>
+                <View style={styles.questionMeta}>
+                  <View style={styles.categoryTag}>
+                    <Text style={styles.categoryTagText}>{faq.category}</Text>
+                  </View>
+                  <View style={styles.helpfulInfo}>
+                    <Ionicons name="thumbs-up-outline" size={12} color="#6B7280" />
+                    <Text style={styles.helpfulText}>도움됨 {faq.helpful}</Text>
+                  </View>
                 </View>
               </View>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          ))
+        )}
       </View>
     </ScrollView>
   );
@@ -276,5 +296,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#6B7280",
     marginLeft: 4,
+  },
+  loadingText: {
+    textAlign: "center",
+    fontSize: 16,
+    color: "#6B7280",
+    marginTop: 40,
+    fontFamily: "Jua_400Regular",
+  },
+  emptyText: {
+    textAlign: "center",
+    fontSize: 16,
+    color: "#6B7280",
+    marginTop: 40,
+    fontFamily: "Jua_400Regular",
   },
 });

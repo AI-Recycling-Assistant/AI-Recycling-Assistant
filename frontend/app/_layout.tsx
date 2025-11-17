@@ -5,9 +5,12 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import HeaderLogo from '@components/HeaderLogo';
+
+const queryClient = new QueryClient();
 
 export {
   ErrorBoundary,
@@ -37,7 +40,11 @@ export default function RootLayout() {
 
   if (!loaded) return null;
 
-  return <RootLayoutNav />;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <RootLayoutNav />
+    </QueryClientProvider>
+  );
 }
 
 function RootLayoutNav() {
