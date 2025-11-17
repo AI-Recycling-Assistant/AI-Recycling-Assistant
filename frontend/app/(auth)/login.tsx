@@ -1,8 +1,16 @@
 // app/(auth)/login.tsx
 import React, { useState } from "react";
 import {
-  View, Text, TextInput, StyleSheet, TouchableOpacity, Alert,
-  ActivityIndicator, KeyboardAvoidingView, Platform
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from "react-native";
 import { Link, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,8 +22,8 @@ const COLORS = {
   card: "#FFFFFF",
   text: "#0F172A",
   sub: "#64748B",
-  primary: "#10B981",   // emerald-500
-  primaryDark: "#059669", // emerald-600
+  primary: "#10B981",
+  primaryDark: "#059669",
   border: "#E2E8F0",
   error: "#EF4444",
 };
@@ -38,16 +46,15 @@ export default function LoginScreen() {
     try {
       setLoading(true);
 
-      // ✅ api.ts의 LoginRequest 타입(username, password)에 맞게 수정
+      // 👇 백엔드 LoginRequest 타입이 { username, password } 라고 가정
       await apiLogin({
         username: _id,
         password: pw,
       });
 
-      // 백엔드에서 아이디/비밀번호가 틀리면 http.ts에서 에러를 throw 하기 때문에
-      // 여기까지 오면 "로그인 성공"으로 간주해도 됩니다.
+      // 로그인 성공시 클라이언트 상태 업데이트
       doLogin(_id);
-      router.replace("/");
+      router.replace("/(tabs)"); // 성공 후 홈 탭으로
     } catch (e: any) {
       Alert.alert("오류", e?.message ?? "로그인 중 오류가 발생했습니다.");
     } finally {
@@ -56,102 +63,106 @@ export default function LoginScreen() {
   };
 
   return (
-      <KeyboardAvoidingView
-          style={s.container}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+    <KeyboardAvoidingView
+      style={s.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        contentContainerStyle={s.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
-        <View style={s.centerWrap}>
-          {/* 헤더 */}
-          <View style={s.header}>
-            <Text style={s.title}>로그인</Text>
-            <Text style={s.caption}>사진으로 분리배출을 더 쉽게</Text>
-          </View>
-
-          {/* 카드 */}
-          <View style={s.card}>
-            {/* 아이디 */}
-            <View style={[s.inputWrap, focus === "id" && s.inputWrapActive]}>
-              <Ionicons
-                  name="person-outline"
-                  size={20}
-                  color={focus === "id" ? COLORS.primaryDark : COLORS.sub}
-                  style={s.inputIcon}
-              />
-              <TextInput
-                  style={s.input}
-                  value={id}
-                  onChangeText={setId}
-                  placeholder="아이디"
-                  placeholderTextColor="#94A3B8"
-                  autoCapitalize="none"
-                  onFocus={() => setFocus("id")}
-                  onBlur={() => setFocus(null)}
-                  returnKeyType="next"
-              />
-            </View>
-
-            {/* 비밀번호 */}
-            <View
-                style={[
-                  s.inputWrap,
-                  focus === "pw" && s.inputWrapActive,
-                  { marginTop: 14 },
-                ]}
-            >
-              <Ionicons
-                  name="lock-closed-outline"
-                  size={20}
-                  color={focus === "pw" ? COLORS.primaryDark : COLORS.sub}
-                  style={s.inputIcon}
-              />
-              <TextInput
-                  style={s.input}
-                  value={pw}
-                  onChangeText={setPw}
-                  placeholder="비밀번호"
-                  placeholderTextColor="#94A3B8"
-                  autoCapitalize="none"
-                  secureTextEntry
-                  onFocus={() => setFocus("pw")}
-                  onBlur={() => setFocus(null)}
-                  returnKeyType="done"
-                  onSubmitEditing={handleLogin}
-              />
-            </View>
-
-            {/* 로그인 버튼 */}
-            <TouchableOpacity
-                style={[s.primaryBtn, loading && { opacity: 0.7 }]}
-                onPress={handleLogin}
-                disabled={loading}
-            >
-              {loading ? (
-                  <ActivityIndicator color="#fff" />
-              ) : (
-                  <Text style={s.primaryText}>로그인</Text>
-              )}
-            </TouchableOpacity>
-
-            {/* 보조 링크 */}
-            <Link href="/(auth)/register" asChild>
-              <TouchableOpacity style={s.linkBtn}>
-                <Text style={s.linkText}>아직 회원가입을 안하셨나요?</Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
+        <View style={s.header}>
+          <Text style={s.title}>로그인</Text>
+          <Text style={s.caption}>사진으로 분리배출을 더 쉽게</Text>
         </View>
-      </KeyboardAvoidingView>
+
+        <View style={s.card}>
+          {/* 아이디 */}
+          <View style={[s.inputWrap, focus === "id" && s.inputWrapActive]}>
+            <Ionicons
+              name="person-outline"
+              size={20}
+              color={focus === "id" ? COLORS.primaryDark : COLORS.sub}
+              style={s.inputIcon}
+            />
+            <TextInput
+              style={s.input}
+              value={id}
+              onChangeText={setId}
+              placeholder="아이디"
+              placeholderTextColor="#94A3B8"
+              autoCapitalize="none"
+              onFocus={() => setFocus("id")}
+              onBlur={() => setFocus(null)}
+              returnKeyType="next"
+            />
+          </View>
+
+          {/* 비밀번호 */}
+          <View
+            style={[
+              s.inputWrap,
+              focus === "pw" && s.inputWrapActive,
+              { marginTop: 14 },
+            ]}
+          >
+            <Ionicons
+              name="lock-closed-outline"
+              size={20}
+              color={focus === "pw" ? COLORS.primaryDark : COLORS.sub}
+              style={s.inputIcon}
+            />
+            <TextInput
+              style={s.input}
+              value={pw}
+              onChangeText={setPw}
+              placeholder="비밀번호"
+              placeholderTextColor="#94A3B8"
+              autoCapitalize="none"
+              secureTextEntry
+              onFocus={() => setFocus("pw")}
+              onBlur={() => setFocus(null)}
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+            />
+          </View>
+
+          {/* 로그인 버튼 */}
+          <TouchableOpacity
+            style={[s.primaryBtn, loading && { opacity: 0.7 }]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={s.primaryText}>로그인</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* 보조 링크 */}
+          <Link href="/(auth)/register" asChild>
+            <TouchableOpacity style={s.linkBtn}>
+              <Text style={s.linkText}>아직 회원가입을 안하셨나요?</Text>
+            </TouchableOpacity>
+          </Link>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-  centerWrap: {
-    flex: 1,
+
+  // 중앙 정렬 대신 ScrollView content에서 정렬
+  scrollContent: {
+    flexGrow: 1,
+    padding: 20,
     alignItems: "center",
     justifyContent: "center",
-    padding: 20,
   },
+
   header: { alignItems: "center", marginBottom: 14 },
   brand: {
     fontFamily: "Jua_400Regular",

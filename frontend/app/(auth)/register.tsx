@@ -85,7 +85,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={s.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <KeyboardAvoidingView style={s.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={s.centerWrap}>
         {/* 헤더 */}
         <View style={s.header}>
