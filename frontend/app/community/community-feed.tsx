@@ -1,12 +1,24 @@
-// CommunityFeedScreen.tsx
+// community/community-feed.tsx
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TextInput,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
+import { useLocalSearchParams, useRouter } from "expo-router";
 
 // ========= 환경설정 =========
-// Android 에뮬레이터에서 PC localhost 접근: 10.0.2.2
-const BASE_URL = "http://10.0.2.2:8080";
+// Android 에뮬레이터: 10.0.2.2, 웹/ios: localhost
+const BASE_URL =
+  Platform.OS === "android" ? "http://10.0.2.2:8080" : "http://localhost:8080";
 const API = `${BASE_URL}/api/community`;
 
 // 인증 붙기 전까지 임시 userId
@@ -39,12 +51,17 @@ type PostDetail = {
   comments?: number; // 총 댓글 수(백엔드가 내려주면 사용)
 };
 
-export default function CommunityFeedScreen({ route, navigation }: any) {
+export default function CommunityFeedScreen(props: any) {
   const [fontsLoaded] = useFonts({ Jua_400Regular });
-  if (!fontsLoaded) return null;
+  const router = useRouter();
+  const searchParams = useLocalSearchParams<{ postId?: string }>();
 
-  // ---- 라우트에서 postId 받기(필수) ----
-  const postId: string = useMemo(() => String(route?.params?.postId ?? "1"), [route?.params?.postId]);
+  // expo-router, react-navigation 둘 다에서 오는 postId 대응
+  const postId: string = useMemo(() => {
+    const paramFromRouter = searchParams.postId;
+    const paramFromNav = props?.route?.params?.postId;
+    return String(paramFromRouter ?? paramFromNav ?? "1");
+  }, [searchParams.postId, props?.route?.params?.postId]);
 
   // ---- 게시글/댓글 상태 ----
   const [post, setPost] = useState<PostDetail | null>(null);
@@ -67,6 +84,8 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
     loadComments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId]);
+
+  if (!fontsLoaded) return null;
 
   // ========= API: 게시글 상세 =========
   async function loadPost() {
@@ -100,12 +119,13 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
     }
   }
 
-  // ========= API: 댓글 목록 (페이징 없음, List 반환) =========
+  // ========= API: 댓글 목록 (List<CommentResponse>) =========
   async function loadComments() {
     try {
       setLoadingComments(true);
       const res = await fetch(`${API}/posts/${postId}/comments`);
-      if (!res.ok) throw new Error(`GET /posts/${postId}/comments 실패: ${res.status}`);
+      if (!res.ok)
+        throw new Error(`GET /posts/${postId}/comments 실패: ${res.status}`);
       const list = await res.json();
 
       const items: Comment[] = (list ?? []).map((c: any) => ({
@@ -137,12 +157,18 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
       const body: any = { content: text.trim() };
       if (parentId) body.parentId = parentId;
 
-      const res = await fetch(`${API}/posts/${postId}/comments?userId=${USER_ID}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error(`POST /posts/${postId}/comments 실패: ${res.status}`);
+      const res = await fetch(
+        `${API}/posts/${postId}/comments?userId=${USER_ID}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        }
+      );
+      if (!res.ok)
+        throw new Error(
+          `POST /posts/${postId}/comments 실패: ${res.status}`
+        );
       const createdId = await res.json(); // 컨트롤러가 Long 반환
 
       const newComment: Comment = {
@@ -156,8 +182,8 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
         parentId: parentId ?? null,
       };
 
-      // 단순히 최상단 추가(트리 렌더링이 필요하면 parentId 기준으로 들여쓰기/정렬 로직을 확장)
-      setComments(prev => [newComment, ...prev]);
+      // 새 댓글을 맨 위에 추가
+      setComments((prev) => [newComment, ...prev]);
       if (parentId) {
         setReplyText("");
         setActiveReply(null);
@@ -165,49 +191,78 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
         setCommentText("");
       }
 
-      // 총 댓글 수를 UI에 반영하고 싶다면 상세 갱신
-      setPost(prev => (prev ? { ...prev, comments: (prev.comments ?? prev ? prev.comments : 0) as number + 1 } : prev));
+      // 상세에 총 댓글 수 반영
+      setPost((prev) =>
+        prev ? { ...prev, comments: (prev.comments ?? 0) + 1 } : prev
+      );
     } catch (e: any) {
       Alert.alert("오류", e?.message ?? "댓글 등록에 실패했습니다.");
     } finally {
       setSubmitting(false);
     }
   }
+
   const sendComment = () => sendCommentBase(null);
   const sendReply = (commentId: string) => sendCommentBase(commentId);
 
   // ========= API: 게시글 좋아요 =========
   async function toggleLike() {
-    // 낙관적 업데이트
-    setIsLiked(prev => !prev);
-    setLikes(prev => prev + (isLiked ? -1 : 1));
+    // 낙관적 업데이트 (state 최신값 기준으로 처리)
+    let nextLiked: boolean;
+    setIsLiked((prev) => {
+      nextLiked = !prev;
+      return nextLiked;
+    });
+    setLikes((prev) => prev + (isLiked ? -1 : 1));
 
     try {
-      const res = await fetch(`${API}/posts/${postId}/like?userId=${USER_ID}`, { method: "POST" });
-      if (!res.ok) throw new Error(`POST /posts/${postId}/like 실패: ${res.status}`);
+      const res = await fetch(
+        `${API}/posts/${postId}/like?userId=${USER_ID}`,
+        { method: "POST" }
+      );
+      if (!res.ok)
+        throw new Error(`POST /posts/${postId}/like 실패: ${res.status}`);
     } catch (e) {
       // 실패 시 롤백
-      setIsLiked(prev => !prev);
-      setLikes(prev => prev + (isLiked ? 1 : -1));
+      setIsLiked((prev) => !prev);
+      setLikes((prev) => prev + (isLiked ? 1 : -1));
     }
   }
 
   // ========= API: 댓글 좋아요 =========
   async function toggleCommentLike(commentId: string) {
     // 낙관적 업데이트
-    setComments(prev =>
-      prev.map(c =>
-        c.id === commentId ? { ...c, isLiked: !c.isLiked, likes: (c.likes ?? 0) + (c.isLiked ? -1 : 1) } : c
+    setComments((prev) =>
+      prev.map((c) =>
+        c.id === commentId
+          ? {
+              ...c,
+              isLiked: !c.isLiked,
+              likes: (c.likes ?? 0) + (c.isLiked ? -1 : 1),
+            }
+          : c
       )
     );
     try {
-      const res = await fetch(`${API}/comments/${commentId}/like?userId=${USER_ID}`, { method: "POST" });
-      if (!res.ok) throw new Error(`POST /comments/${commentId}/like 실패: ${res.status}`);
+      const res = await fetch(
+        `${API}/comments/${commentId}/like?userId=${USER_ID}`,
+        { method: "POST" }
+      );
+      if (!res.ok)
+        throw new Error(
+          `POST /comments/${commentId}/like 실패: ${res.status}`
+        );
     } catch (e) {
       // 롤백
-      setComments(prev =>
-        prev.map(c =>
-          c.id === commentId ? { ...c, isLiked: !c.isLiked, likes: (c.likes ?? 0) + (c.isLiked ? -1 : 1) } : c
+      setComments((prev) =>
+        prev.map((c) =>
+          c.id === commentId
+            ? {
+                ...c,
+                isLiked: !c.isLiked,
+                likes: (c.likes ?? 0) + (c.isLiked ? -1 : 1),
+              }
+            : c
         )
       );
     }
@@ -217,12 +272,16 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
   async function reportPostHandler() {
     try {
       setShowHeaderMenu(false);
-      const res = await fetch(`${API}/posts/${postId}/report?userId=${USER_ID}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: "부적절한 내용" }), // 필요 시 UI로 사유 선택 구현
-      });
-      if (!res.ok) throw new Error(`POST /posts/${postId}/report 실패: ${res.status}`);
+      const res = await fetch(
+        `${API}/posts/${postId}/report?userId=${USER_ID}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "부적절한 내용" }),
+        }
+      );
+      if (!res.ok)
+        throw new Error(`POST /posts/${postId}/report 실패: ${res.status}`);
       Alert.alert("신고 완료", "신고가 접수되었습니다.");
     } catch (e: any) {
       Alert.alert("오류", e?.message ?? "신고 중 오류가 발생했습니다.");
@@ -234,21 +293,31 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
     setReplyText("");
   };
 
+  const goBack = () => {
+    if (props?.navigation?.goBack) props.navigation.goBack();
+    else router.back();
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* 헤더 */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => navigation?.goBack?.()}>
+        <TouchableOpacity style={styles.backButton} onPress={goBack}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>게시글</Text>
         <View style={styles.headerMenuContainer}>
-          <TouchableOpacity onPress={() => setShowHeaderMenu(!showHeaderMenu)}>
+          <TouchableOpacity
+            onPress={() => setShowHeaderMenu(!showHeaderMenu)}
+          >
             <Ionicons name="ellipsis-horizontal" size={24} color="#6B7280" />
           </TouchableOpacity>
           {showHeaderMenu && (
             <View style={styles.headerDropdownMenu}>
-              <TouchableOpacity style={styles.headerMenuItem} onPress={reportPostHandler}>
+              <TouchableOpacity
+                style={styles.headerMenuItem}
+                onPress={reportPostHandler}
+              >
                 <Text style={styles.headerMenuText}>신고하기</Text>
               </TouchableOpacity>
             </View>
@@ -280,7 +349,9 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
 
             {/* 카테고리 */}
             <View style={styles.categoryTag}>
-              <Text style={styles.categoryText}>{post.category === "QUESTION" ? "질문" : "팁"}</Text>
+              <Text style={styles.categoryText}>
+                {post.category === "QUESTION" ? "질문" : "팁"}
+              </Text>
             </View>
 
             {/* 본문 */}
@@ -298,14 +369,34 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
 
             {/* 액션 버튼들 */}
             <View style={styles.postActions}>
-              <TouchableOpacity style={styles.actionButton} onPress={toggleLike}>
-                <Ionicons name={isLiked ? "heart" : "heart-outline"} size={20} color={isLiked ? "#EF4444" : "#6B7280"} />
-                <Text style={[styles.actionText, isLiked && styles.likedText]}>{likes}</Text>
+              <TouchableOpacity
+                style={styles.actionButton}
+                onPress={toggleLike}
+              >
+                <Ionicons
+                  name={isLiked ? "heart" : "heart-outline"}
+                  size={20}
+                  color={isLiked ? "#EF4444" : "#6B7280"}
+                />
+                <Text
+                  style={[
+                    styles.actionText,
+                    isLiked && styles.likedText,
+                  ]}
+                >
+                  {likes}
+                </Text>
               </TouchableOpacity>
 
               <View style={styles.actionButton}>
-                <Ionicons name="chatbubble-outline" size={20} color="#6B7280" />
-                <Text style={styles.actionText}>{post.comments ?? comments.length}</Text>
+                <Ionicons
+                  name="chatbubble-outline"
+                  size={20}
+                  color="#6B7280"
+                />
+                <Text style={styles.actionText}>
+                  {post.comments ?? comments.length}
+                </Text>
               </View>
 
               <View style={styles.actionButton}>
@@ -319,7 +410,9 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
 
       {/* 댓글 섹션 */}
       <View style={styles.commentsSection}>
-        <Text style={styles.commentsTitle}>댓글 {post?.comments ?? comments.length}개</Text>
+        <Text style={styles.commentsTitle}>
+          댓글 {post?.comments ?? comments.length}개
+        </Text>
 
         {loadingComments && (
           <View style={{ paddingVertical: 12, alignItems: "center" }}>
@@ -331,10 +424,16 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
           <View key={comment.id} style={styles.commentCard}>
             <View style={styles.commentHeader}>
               <View style={styles.commentUserInfo}>
-                <Text style={styles.commentAvatar}>{comment.avatar ?? "🙂"}</Text>
+                <Text style={styles.commentAvatar}>
+                  {comment.avatar ?? "🙂"}
+                </Text>
                 <View>
-                  <Text style={styles.commentUsername}>{comment.username ?? "익명"}</Text>
-                  <Text style={styles.commentTime}>{comment.timeAgo ?? ""}</Text>
+                  <Text style={styles.commentUsername}>
+                    {comment.username ?? "익명"}
+                  </Text>
+                  <Text style={styles.commentTime}>
+                    {comment.timeAgo ?? ""}
+                  </Text>
                 </View>
               </View>
             </View>
@@ -342,18 +441,29 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
             <Text style={styles.commentContent}>{comment.content}</Text>
 
             <View style={styles.commentActions}>
-              <TouchableOpacity style={styles.commentActionButton} onPress={() => toggleCommentLike(comment.id)}>
+              <TouchableOpacity
+                style={styles.commentActionButton}
+                onPress={() => toggleCommentLike(comment.id)}
+              >
                 <Ionicons
                   name={comment.isLiked ? "heart" : "heart-outline"}
                   size={16}
                   color={comment.isLiked ? "#EF4444" : "#6B7280"}
                 />
-                <Text style={[styles.commentActionText, comment.isLiked && styles.likedText]}>
+                <Text
+                  style={[
+                    styles.commentActionText,
+                    comment.isLiked && styles.likedText,
+                  ]}
+                >
                   {comment.likes ?? 0}
                 </Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.commentActionButton} onPress={() => toggleReply(comment.id)}>
+              <TouchableOpacity
+                style={styles.commentActionButton}
+                onPress={() => toggleReply(comment.id)}
+              >
                 <Text style={styles.replyText}>답글</Text>
               </TouchableOpacity>
             </View>
@@ -361,7 +471,10 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
             {activeReply === comment.id && (
               <View style={styles.replyInput}>
                 <View style={styles.replyInputContainer}>
-                  <TouchableOpacity style={styles.replyCancel} onPress={() => setActiveReply(null)}>
+                  <TouchableOpacity
+                    style={styles.replyCancel}
+                    onPress={() => setActiveReply(null)}
+                  >
                     <Text style={styles.replyCancelText}>취소</Text>
                   </TouchableOpacity>
                   <TextInput
@@ -372,7 +485,11 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
                     onSubmitEditing={() => sendReply(comment.id)}
                     editable={!submitting}
                   />
-                  <TouchableOpacity style={styles.replySendButton} onPress={() => sendReply(comment.id)} disabled={submitting}>
+                  <TouchableOpacity
+                    style={styles.replySendButton}
+                    onPress={() => sendReply(comment.id)}
+                    disabled={submitting}
+                  >
                     <Ionicons name="send" size={16} color="#1AA179" />
                   </TouchableOpacity>
                 </View>
@@ -393,7 +510,11 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
             onSubmitEditing={sendComment}
             editable={!submitting}
           />
-          <TouchableOpacity style={styles.sendButton} onPress={sendComment} disabled={submitting}>
+          <TouchableOpacity
+            style={styles.sendButton}
+            onPress={sendComment}
+            disabled={submitting}
+          >
             <Ionicons name="send" size={20} color="#1AA179" />
           </TouchableOpacity>
         </View>
@@ -402,7 +523,7 @@ export default function CommunityFeedScreen({ route, navigation }: any) {
   );
 }
 
-// ========= 스타일 (원본 레이아웃 유지) =========
+// ========= 스타일 =========
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   content: { paddingBottom: 100 },
@@ -417,14 +538,29 @@ const styles = StyleSheet.create({
     borderBottomColor: "#F3F4F6",
   },
   backButton: { padding: 4 },
-  headerTitle: { fontSize: 18, fontFamily: "Jua_400Regular", color: "#111827" },
+  headerTitle: {
+    fontSize: 18,
+    fontFamily: "Jua_400Regular",
+    color: "#111827",
+  },
   postContainer: { backgroundColor: "#FFFFFF", padding: 20, marginBottom: 8 },
   userInfo: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
   avatar: { fontSize: 40, marginRight: 12 },
   userDetails: { flex: 1 },
-  username: { fontSize: 18, fontFamily: "Jua_400Regular", color: "#111827", marginBottom: 2 },
+  username: {
+    fontSize: 18,
+    fontFamily: "Jua_400Regular",
+    color: "#111827",
+    marginBottom: 2,
+  },
   timeAgo: { fontSize: 14, color: "#6B7280" },
-  postTitle: { fontSize: 20, fontFamily: "Jua_400Regular", color: "#111827", marginBottom: 12, lineHeight: 28 },
+  postTitle: {
+    fontSize: 20,
+    fontFamily: "Jua_400Regular",
+    color: "#111827",
+    marginBottom: 12,
+    lineHeight: 28,
+  },
   categoryTag: {
     backgroundColor: "#F0FDF4",
     paddingHorizontal: 12,
@@ -433,37 +569,144 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     marginBottom: 16,
   },
-  categoryText: { fontSize: 14, fontFamily: "Jua_400Regular", color: "#16A34A" },
-  postContent: { fontSize: 16, fontFamily: "Jua_400Regular", color: "#374151", lineHeight: 24, marginBottom: 20 },
+  categoryText: {
+    fontSize: 14,
+    fontFamily: "Jua_400Regular",
+    color: "#16A34A",
+  },
+  postContent: {
+    fontSize: 16,
+    fontFamily: "Jua_400Regular",
+    color: "#374151",
+    lineHeight: 24,
+    marginBottom: 20,
+  },
   imageContainer: { marginBottom: 20 },
-  imagePlaceholder: { height: 200, backgroundColor: "#F3F4F6", borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  imageText: { fontSize: 14, color: "#9CA3AF", marginTop: 8, fontFamily: "Jua_400Regular" },
-  postActions: { flexDirection: "row", alignItems: "center", gap: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: "#F3F4F6" },
+  imagePlaceholder: {
+    height: 200,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  imageText: {
+    fontSize: 14,
+    color: "#9CA3AF",
+    marginTop: 8,
+    fontFamily: "Jua_400Regular",
+  },
+  postActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 24,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+  },
   actionButton: { flexDirection: "row", alignItems: "center", gap: 6 },
-  actionText: { fontSize: 14, color: "#6B7280", fontFamily: "Jua_400Regular" },
+  actionText: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontFamily: "Jua_400Regular",
+  },
   likedText: { color: "#EF4444" },
   commentsSection: { backgroundColor: "#FFFFFF", padding: 20 },
-  commentsTitle: { fontSize: 18, fontFamily: "Jua_400Regular", color: "#111827", marginBottom: 16 },
-  commentCard: { marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
-  commentHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
+  commentsTitle: {
+    fontSize: 18,
+    fontFamily: "Jua_400Regular",
+    color: "#111827",
+    marginBottom: 16,
+  },
+  commentCard: {
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  commentHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
   commentUserInfo: { flexDirection: "row", alignItems: "center" },
   commentAvatar: { fontSize: 28, marginRight: 10 },
-  commentUsername: { fontSize: 14, fontFamily: "Jua_400Regular", color: "#111827", marginBottom: 2 },
+  commentUsername: {
+    fontSize: 14,
+    fontFamily: "Jua_400Regular",
+    color: "#111827",
+    marginBottom: 2,
+  },
   commentTime: { fontSize: 12, color: "#6B7280" },
-  commentContent: { fontSize: 14, fontFamily: "Jua_400Regular", color: "#374151", lineHeight: 20, marginBottom: 12 },
-  commentActions: { flexDirection: "row", alignItems: "center", gap: 16 },
-  commentActionButton: { flexDirection: "row", alignItems: "center", gap: 4 },
-  commentActionText: { fontSize: 12, color: "#6B7280", fontFamily: "Jua_400Regular" },
-  replyText: { fontSize: 12, color: "#6B7280", fontFamily: "Jua_400Regular" },
-  commentInput: { backgroundColor: "#FFFFFF", padding: 20, borderTopWidth: 1, borderTopColor: "#F3F4F6" },
-  inputContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#F9FAFB", borderRadius: 24, paddingHorizontal: 16, paddingVertical: 12 },
+  commentContent: {
+    fontSize: 14,
+    fontFamily: "Jua_400Regular",
+    color: "#374151",
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  commentActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  commentActionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  commentActionText: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontFamily: "Jua_400Regular",
+  },
+  replyText: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontFamily: "Jua_400Regular",
+  },
+  commentInput: {
+    backgroundColor: "#FFFFFF",
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9FAFB",
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
   sendButton: { padding: 4 },
-  commentInputField: { flex: 1, fontSize: 14, color: "#374151", fontFamily: "Jua_400Regular" },
+  commentInputField: {
+    flex: 1,
+    fontSize: 14,
+    color: "#374151",
+    fontFamily: "Jua_400Regular",
+  },
   replyInput: { marginTop: 12, paddingLeft: 38 },
-  replyInputContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8 },
-  replyInputField: { flex: 1, fontSize: 12, color: "#374151", fontFamily: "Jua_400Regular" },
+  replyInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  replyInputField: {
+    flex: 1,
+    fontSize: 12,
+    color: "#374151",
+    fontFamily: "Jua_400Regular",
+  },
   replyCancel: { marginRight: 8 },
-  replyCancelText: { fontSize: 10, color: "#6B7280", fontFamily: "Jua_400Regular" },
+  replyCancelText: {
+    fontSize: 10,
+    color: "#6B7280",
+    fontFamily: "Jua_400Regular",
+  },
   replySendButton: { padding: 2 },
   headerMenuContainer: { position: "relative" },
   headerDropdownMenu: {
@@ -481,5 +724,9 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   headerMenuItem: { paddingVertical: 12, paddingHorizontal: 16 },
-  headerMenuText: { fontSize: 14, color: "#EF4444", fontFamily: "Jua_400Regular" },
+  headerMenuText: {
+    fontSize: 14,
+    color: "#EF4444",
+    fontFamily: "Jua_400Regular",
+  },
 });

@@ -11,6 +11,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/community")
+@CrossOrigin(origins = "http://localhost:8081")
 @RequiredArgsConstructor
 public class CommunityController {
 

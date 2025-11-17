@@ -1,8 +1,19 @@
-// CommunityMainScreen.tsx
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TouchableWithoutFeedback, ActivityIndicator, Alert } from "react-native";
+// app/community/community-main.tsx
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  ActivityIndicator,
+  Alert,
+  Platform,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useEffect, useMemo, useState } from "react";
+import { router } from "expo-router";
 
 // ===== 타입 =====
 type CommunityPost = {
@@ -11,22 +22,33 @@ type CommunityPost = {
   avatar?: string;
   timeAgo?: string;
   title: string;
-  // 서버: PostCategory = "TIP" | "QUESTION"
   category: "TIP" | "QUESTION";
   content: string;
   hasPhoto?: boolean;
   likes?: number;
-  comments?: number; // 요약 응답에 포함 시 사용
-  liked?: boolean;   // 서버가 내려주면 사용, 없으면 클라에서 false
+  comments?: number;
+  liked?: boolean;
 };
 
 type CategoryTab = "전체" | "질문" | "팁";
 
-// ===== API 기본 설정 =====
-const BASE_URL = "http://10.0.2.2:8080"; // Android 에뮬레이터에서 PC localhost
-const API = `${BASE_URL}/api/community`;
+type SpringPage<T> = {
+  content: T[];
+  number: number;
+  size: number;
+  totalElements: number;
+  totalPages: number;
+  first: boolean;
+  last: boolean;
+  empty: boolean;
+};
 
-// 인증 전 임시 userId (백엔드 @RequestParam userId 요구)
+// ===== API 기본 설정 =====
+// Android 에뮬레이터: 10.0.2.2
+// 웹/ios 시뮬레이터: localhost
+const BASE_URL =
+  Platform.OS === "android" ? "http://10.0.2.2:8080" : "http://localhost:8080";
+const API = `${BASE_URL}/api/community`;
 const USER_ID = 1;
 
 // 탭 → 서버 카테고리 매핑
@@ -36,13 +58,13 @@ function mapTabToServerCategory(cat: CategoryTab): "QUESTION" | "TIP" | "" {
   return "";
 }
 
-export default function CommunityMainScreen({ navigation }: any) {
+export default function CommunityMainScreen() {
   const [fontsLoaded] = useFonts({ Jua_400Regular });
+
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("전체");
 
-  // 페이지네이션(Spring Page)
-  const [page, setPage] = useState(0); // 0-based!
+  const [page, setPage] = useState(0);
   const [size] = useState(10);
   const [hasMore, setHasMore] = useState(true);
 
@@ -50,10 +72,12 @@ export default function CommunityMainScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
 
-  const serverCategory = useMemo(() => mapTabToServerCategory(activeCategory), [activeCategory]);
+  const serverCategory = useMemo(
+    () => mapTabToServerCategory(activeCategory),
+    [activeCategory]
+  );
 
   useEffect(() => {
-    // 카테고리 변경 시 0페이지부터 새로 로드
     loadPosts(true).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverCategory]);
@@ -70,20 +94,22 @@ export default function CommunityMainScreen({ navigation }: any) {
       const params = new URLSearchParams();
       params.append("page", String(nextPage));
       params.append("size", String(size));
-      if (serverCategory) params.append("category", serverCategory); // QUESTION | TIP
+      if (serverCategory) params.append("category", serverCategory);
 
       const res = await fetch(`${API}/posts?${params.toString()}`);
-      if (!res.ok) throw new Error(`GET /api/community/posts 실패: ${res.status}`);
+      if (!res.ok) {
+        throw new Error(`목록 조회 실패: ${res.status}`);
+      }
 
-      // Spring Page<PostSummaryResponse> 가정:
-      // { content, number, size, totalElements, totalPages, first, last, empty }
-      const data = await res.json();
+      const raw = await res.json();
+      const data = raw as Partial<SpringPage<any>>;
+      const contentArray = Array.isArray(data.content) ? data.content : [];
 
-      const mapped: CommunityPost[] = (data.content ?? []).map((p: any) => ({
+      const mapped: CommunityPost[] = contentArray.map((p: any) => ({
         id: String(p.id),
-        title: p.title,
-        content: p.content,
-        category: p.category,               // "TIP" | "QUESTION"
+        title: p.title ?? "",
+        content: p.content ?? "",
+        category: p.category as "TIP" | "QUESTION",
         comments: p.comments ?? 0,
         likes: p.likes ?? 0,
         liked: !!p.liked,
@@ -97,76 +123,99 @@ export default function CommunityMainScreen({ navigation }: any) {
         setPosts(mapped);
         setPage(data.number ?? 0);
       } else {
-        setPosts(prev => [...prev, ...mapped]);
+        setPosts((prev) => [...prev, ...mapped]);
         setPage(data.number ?? nextPage);
       }
 
-      // 다음 페이지 여부
       if (typeof data.last === "boolean") {
         setHasMore(!data.last);
-      } else if (typeof data.totalPages === "number" && typeof data.number === "number") {
+      } else if (
+        typeof data.totalPages === "number" &&
+        typeof data.number === "number"
+      ) {
         setHasMore(data.number + 1 < data.totalPages);
       } else {
-        // 정보가 없으면 받은 개수 기준 추정
         setHasMore(mapped.length === size);
       }
     } catch (e: any) {
+      // fetch 자체가 실패한 경우(서버 꺼짐, CORS 등) -> 브라우저에선 "Failed to fetch"
       setErrorText(e?.message ?? "목록을 불러오는 동안 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
   }
 
-  // ===== 좋아요 (POST /posts/{postId}/like?userId=) =====
+  // ===== 좋아요 =====
   async function toggleLike(postId: string) {
-    // 낙관적 업데이트
-    setPosts(prev =>
-      prev.map(p =>
-        p.id === postId ? { ...p, liked: !p.liked, likes: (p.likes ?? 0) + (p.liked ? -1 : 1) } : p
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? {
+              ...p,
+              liked: !p.liked,
+              likes: (p.likes ?? 0) + (p.liked ? -1 : 1),
+            }
+          : p
       )
     );
+
     try {
-      const res = await fetch(`${API}/posts/${postId}/like?userId=${USER_ID}`, { method: "POST" });
-      if (!res.ok) throw new Error(`POST /api/community/posts/${postId}/like 실패: ${res.status}`);
+      const res = await fetch(
+        `${API}/posts/${postId}/like?userId=${USER_ID}`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        throw new Error(`좋아요 실패: ${res.status}`);
+      }
     } catch (e) {
-      // 실패 시 롤백
-      setPosts(prev =>
-        prev.map(p =>
-          p.id === postId ? { ...p, liked: !p.liked, likes: (p.likes ?? 0) + (p.liked ? -1 : 1) } : p
+      // 롤백
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === postId
+            ? {
+                ...p,
+                liked: !p.liked,
+                likes: (p.likes ?? 0) + (p.liked ? -1 : 1),
+              }
+            : p
         )
       );
       Alert.alert("오류", "좋아요 처리에 실패했습니다.");
     }
   }
 
-  // ===== 신고 (POST /posts/{postId}/report?userId=) =====
+  // ===== 신고 =====
   async function reportPost(postId: string) {
     try {
       setActiveMenu(null);
-      const res = await fetch(`${API}/posts/${postId}/report?userId=${USER_ID}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: "부적절한 내용" }), // 필요 시 사유 선택 UI 연동
-      });
-      if (!res.ok) throw new Error(`POST /api/community/posts/${postId}/report 실패: ${res.status}`);
+      const res = await fetch(
+        `${API}/posts/${postId}/report?userId=${USER_ID}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "부적절한 내용" }),
+        }
+      );
+      if (!res.ok) {
+        throw new Error(`신고 실패: ${res.status}`);
+      }
       Alert.alert("신고 완료", "신고가 접수되었습니다.");
     } catch (e: any) {
       Alert.alert("오류", e?.message ?? "신고 중 오류가 발생했습니다.");
     }
   }
 
-  // ===== 메뉴/숨기기 =====
-  const toggleMenu = (postId: string) => setActiveMenu(activeMenu === postId ? null : postId);
+  const toggleMenu = (postId: string) =>
+    setActiveMenu(activeMenu === postId ? null : postId);
+
   const hidePost = (postId: string) => {
-    setPosts(prev => prev.filter(p => p.id !== postId));
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
     setActiveMenu(null);
   };
 
-  // 탭 전환
   const onChangeTab = (tab: CategoryTab) => {
     setActiveCategory(tab);
     setHasMore(true);
-    // loadPosts(true)는 useEffect에서 serverCategory 변경을 트리거하여 호출됨
   };
 
   return (
@@ -181,21 +230,53 @@ export default function CommunityMainScreen({ navigation }: any) {
 
         {/* 카테고리 탭 */}
         <View style={styles.categoryTabs}>
-          <TouchableOpacity style={[styles.tab, activeCategory === "전체" && styles.activeTab]} onPress={() => onChangeTab("전체")}>
-            <Text style={[styles.tabText, activeCategory === "전체" && styles.activeTabText]}>전체</Text>
+          <TouchableOpacity
+            style={[styles.tab, activeCategory === "전체" && styles.activeTab]}
+            onPress={() => onChangeTab("전체")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeCategory === "전체" && styles.activeTabText,
+              ]}
+            >
+              전체
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tab, activeCategory === "질문" && styles.activeTab]} onPress={() => onChangeTab("질문")}>
-            <Text style={[styles.tabText, activeCategory === "질문" && styles.activeTabText]}>질문</Text>
+          <TouchableOpacity
+            style={[styles.tab, activeCategory === "질문" && styles.activeTab]}
+            onPress={() => onChangeTab("질문")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeCategory === "질문" && styles.activeTabText,
+              ]}
+            >
+              질문
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.tab, activeCategory === "팁" && styles.activeTab]} onPress={() => onChangeTab("팁")}>
-            <Text style={[styles.tabText, activeCategory === "팁" && styles.activeTabText]}>팁</Text>
+          <TouchableOpacity
+            style={[styles.tab, activeCategory === "팁" && styles.activeTab]}
+            onPress={() => onChangeTab("팁")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeCategory === "팁" && styles.activeTabText,
+              ]}
+            >
+              팁
+            </Text>
           </TouchableOpacity>
         </View>
 
         {/* 오류 메시지 */}
         {errorText && (
           <View style={{ paddingVertical: 8 }}>
-            <Text style={{ color: "#EF4444", fontFamily: "Jua_400Regular" }}>{errorText}</Text>
+            <Text style={{ color: "#EF4444", fontFamily: "Jua_400Regular" }}>
+              {errorText}
+            </Text>
           </View>
         )}
 
@@ -207,39 +288,66 @@ export default function CommunityMainScreen({ navigation }: any) {
             </View>
           ) : posts.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>아직 등록된 게시물이 없습니다</Text>
+              <Text style={styles.emptyText}>
+                아직 등록된 게시물이 없습니다
+              </Text>
             </View>
           ) : (
-            posts.map(post => (
+            posts.map((post) => (
               <View key={post.id} style={styles.postCard}>
                 {/* 사용자 정보 */}
                 <View style={styles.postHeader}>
                   <View style={styles.userInfo}>
                     <Text style={styles.avatar}>{post.avatar ?? "🙂"}</Text>
                     <View style={styles.userDetails}>
-                      <Text style={styles.username}>{post.username ?? "익명"}</Text>
+                      <Text style={styles.username}>
+                        {post.username ?? "익명"}
+                      </Text>
                       <Text style={styles.timeAgo}>{post.timeAgo ?? ""}</Text>
                     </View>
                   </View>
                   <View style={styles.menuContainer}>
                     <TouchableOpacity onPress={() => toggleMenu(post.id)}>
-                      <Ionicons name="ellipsis-horizontal" size={20} color="#6B7280" />
+                      <Ionicons
+                        name="ellipsis-horizontal"
+                        size={20}
+                        color="#6B7280"
+                      />
                     </TouchableOpacity>
                     {activeMenu === post.id && (
                       <View style={styles.dropdownMenu}>
-                        <TouchableOpacity style={[styles.menuItem, styles.dangerItem]} onPress={() => reportPost(post.id)}>
-                          <Text style={[styles.menuItemText, styles.dangerText]}>신고하기</Text>
+                        <TouchableOpacity
+                          style={[styles.menuItem, styles.dangerItem]}
+                          onPress={() => reportPost(post.id)}
+                        >
+                          <Text
+                            style={[styles.menuItemText, styles.dangerText]}
+                          >
+                            신고하기
+                          </Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.menuItem} onPress={() => hidePost(post.id)}>
-                          <Text style={styles.menuItemText}>게시글 숨기기</Text>
+                        <TouchableOpacity
+                          style={styles.menuItem}
+                          onPress={() => hidePost(post.id)}
+                        >
+                          <Text style={styles.menuItemText}>
+                            게시글 숨기기
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     )}
                   </View>
                 </View>
 
-                {/* 제목 (상세 이동 연결 추천) */}
-                <TouchableOpacity onPress={() => navigation?.navigate?.("CommunityFeed", { postId: post.id })}>
+                {/* 제목 → 상세 페이지 이동 */}
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push({
+                      pathname: "/community/community-feed",
+                      params: { postId: post.id },
+                    })
+                  }
+                >
                   <Text style={styles.postTitle}>{post.title}</Text>
                 </TouchableOpacity>
 
@@ -248,13 +356,17 @@ export default function CommunityMainScreen({ navigation }: any) {
                   <View
                     style={[
                       styles.categoryTag,
-                      post.category === "QUESTION" ? styles.categoryTagQuestion : styles.categoryTagTip,
+                      post.category === "QUESTION"
+                        ? styles.categoryTagQuestion
+                        : styles.categoryTagTip,
                     ]}
                   >
                     <Text
                       style={[
                         styles.categoryTagText,
-                        post.category === "QUESTION" ? styles.categoryTagTextQuestion : styles.categoryTagTextTip,
+                        post.category === "QUESTION"
+                          ? styles.categoryTagTextQuestion
+                          : styles.categoryTagTextTip,
                       ]}
                     >
                       {post.category === "QUESTION" ? "질문" : "팁"}
@@ -263,7 +375,11 @@ export default function CommunityMainScreen({ navigation }: any) {
 
                   {post.hasPhoto && (
                     <View style={styles.photoIndicator}>
-                      <Ionicons name="image-outline" size={14} color="#6B7280" />
+                      <Ionicons
+                        name="image-outline"
+                        size={14}
+                        color="#6B7280"
+                      />
                       <Text style={styles.photoIndicatorText}>사진 첨부</Text>
                     </View>
                   )}
@@ -276,17 +392,42 @@ export default function CommunityMainScreen({ navigation }: any) {
 
                 {/* 액션 */}
                 <View style={styles.postActions}>
-                  <TouchableOpacity style={styles.actionButton} onPress={() => toggleLike(post.id)}>
-                    <Ionicons name={post.liked ? "heart" : "heart-outline"} size={20} color={post.liked ? "#EF4444" : "#6B7280"} />
-                    <Text style={[styles.actionText, post.liked && styles.likedText]}>{post.likes ?? 0}</Text>
+                  <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => toggleLike(post.id)}
+                  >
+                    <Ionicons
+                      name={post.liked ? "heart" : "heart-outline"}
+                      size={20}
+                      color={post.liked ? "#EF4444" : "#6B7280"}
+                    />
+                    <Text
+                      style={[
+                        styles.actionText,
+                        post.liked && styles.likedText,
+                      ]}
+                    >
+                      {post.likes ?? 0}
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.actionButton}
-                    onPress={() => navigation?.navigate?.("CommunityFeed", { postId: post.id })}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/community/community-feed",
+                        params: { postId: post.id },
+                      })
+                    }
                   >
-                    <Ionicons name="chatbubble-outline" size={20} color="#6B7280" />
-                    <Text style={styles.actionText}>{post.comments ?? 0}</Text>
+                    <Ionicons
+                      name="chatbubble-outline"
+                      size={20}
+                      color="#6B7280"
+                    />
+                    <Text style={styles.actionText}>
+                      {post.comments ?? 0}
+                    </Text>
                   </TouchableOpacity>
 
                   <View style={styles.actionButton}>
@@ -306,19 +447,28 @@ export default function CommunityMainScreen({ navigation }: any) {
               <ActivityIndicator />
             ) : (
               <TouchableOpacity
-                style={{ paddingHorizontal: 16, paddingVertical: 10, backgroundColor: "#1AA179", borderRadius: 8 }}
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  backgroundColor: "#1AA179",
+                  borderRadius: 8,
+                }}
                 onPress={() => loadPosts(false)}
               >
-                <Text style={{ color: "#fff", fontFamily: "Jua_400Regular" }}>더 보기</Text>
+                <Text
+                  style={{ color: "#fff", fontFamily: "Jua_400Regular" }}
+                >
+                  더 보기
+                </Text>
               </TouchableOpacity>
             )}
           </View>
         )}
 
-        {/* 플로팅: 글쓰기 화면으로 이동(작성은 /posts POST에서 처리) */}
+        {/* 플로팅: 업로드 페이지로 이동 */}
         <TouchableOpacity
           style={styles.floatingButton}
-          onPress={() => navigation?.navigate?.("CommunityWrite")}
+          onPress={() => router.push("/community/community-upload")}
         >
           <Ionicons name="add" size={28} color="#FFFFFF" />
         </TouchableOpacity>
@@ -327,7 +477,7 @@ export default function CommunityMainScreen({ navigation }: any) {
   );
 }
 
-// ===== 스타일 (기존 유지) =====
+// 스타일은 기존 그대로 사용
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   content: { paddingHorizontal: 20, paddingVertical: 24, paddingBottom: 100 },
