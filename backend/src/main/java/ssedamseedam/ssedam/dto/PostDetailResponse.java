@@ -19,4 +19,7 @@ public class PostDetailResponse {
     private int likeCount;
     private int commentCount;
     private List<String> images;
+
+    private boolean liked;   // 현재 로그인한 유저가 좋아요 눌렀는지
+    private boolean mine;    // 내가 쓴 글인지
 }

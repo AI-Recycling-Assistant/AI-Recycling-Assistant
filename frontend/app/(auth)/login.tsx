@@ -1,4 +1,3 @@
-// login.tsx
 // app/(auth)/login.tsx
 import React, { useState } from "react";
 import {
@@ -68,9 +67,12 @@ export default function LoginScreen() {
       });
       console.log("로그인 성공 응답:", res);
 
-      // ✅ 1) 전역 상태 업데이트 (홈에서 쓸 이름 저장)
-      //    여기서는 일단 로그인 아이디(_id)를 이름으로 사용
-      login(_id);
+      // ✅ 1) 전역 상태 업데이트 (userId, username, nickname 저장)
+      login({
+        userId: res.userId,
+        username: res.username,
+        nickname: res.nickname,
+      });
 
       // ✅ 2) 로그인 성공 화면으로 전환
       setSuccess(true);
@@ -127,7 +129,6 @@ export default function LoginScreen() {
         {/* 헤더 */}
         <View style={s.header}>
           <Text style={s.title}>로그인</Text>
-          {/* "다시 오셨군요 😊" 제거 */}
         </View>
 
         {/* 카드 */}

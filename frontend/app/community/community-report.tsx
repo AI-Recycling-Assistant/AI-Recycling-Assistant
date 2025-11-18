@@ -15,18 +15,21 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useState } from "react";
+import { useAuth } from "@store/auth"; // ✅ 로그인 정보 사용
 
 // ===== API 기본 설정 =====
 // Android 에뮬레이터: 10.0.2.2, 웹/ios: localhost
 const BASE_URL =
   Platform.OS === "android" ? "http://10.0.2.2:8080" : "http://localhost:8080";
 const API = `${BASE_URL}/api/community`;
-const USER_ID = 1; // 인증 붙기 전 임시 userId
 
 export default function CommunityReportScreen() {
   const [fontsLoaded] = useFonts({ Jua_400Regular });
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+
+  // ✅ 전역 auth 에서 현재 로그인 유저 정보 가져오기
+  const { userId, isLoggedIn } = useAuth();
 
   // 필수 파라미터: 신고 대상 게시글 ID
   const postId: string | undefined = route?.params?.postId
@@ -62,6 +65,12 @@ export default function CommunityReportScreen() {
 
   // ==== 신고 전송: POST /api/community/posts/{postId}/report?userId= ====
   const handleSubmit = async () => {
+    // ✅ 로그인 체크
+    if (!isLoggedIn || !userId) {
+      Alert.alert("로그인이 필요합니다", "신고 기능을 사용하려면 먼저 로그인해주세요.");
+      return;
+    }
+
     if (!validate()) return;
 
     try {
@@ -69,12 +78,12 @@ export default function CommunityReportScreen() {
 
       const body = {
         reason: selectedReason,
-        // PostReportRequest 필드 이름에 맞게 detail/description 등 필요하면 여기 수정
+        // PostReportRequest 필드 이름에 맞게 detail 사용
         detail: feedback.trim(),
       };
 
       const res = await fetch(
-        `${API}/posts/${postId}/report?userId=${USER_ID}`,
+        `${API}/posts/${postId}/report?userId=${userId}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

@@ -14,15 +14,13 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useAuth } from "@store/auth"; // ✅ 로그인 정보 사용
 
 // ========= 환경설정 =========
 // Android 에뮬레이터: 10.0.2.2, 웹/ios: localhost
 const BASE_URL =
   Platform.OS === "android" ? "http://10.0.2.2:8080" : "http://localhost:8080";
 const API = `${BASE_URL}/api/community`;
-
-// 인증 붙기 전까지 임시 userId
-const USER_ID = 1;
 
 // ========= 타입 =========
 type Comment = {
@@ -56,6 +54,9 @@ export default function CommunityFeedScreen(props: any) {
   const router = useRouter();
   const searchParams = useLocalSearchParams<{ postId?: string }>();
 
+  // ✅ 전역 auth (userId / 로그인 여부)
+  const { userId, isLoggedIn, nickname } = useAuth();
+
   // expo-router, react-navigation 둘 다에서 오는 postId 대응
   const postId: string = useMemo(() => {
     const paramFromRouter = searchParams.postId;
@@ -80,18 +81,23 @@ export default function CommunityFeedScreen(props: any) {
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    loadPost();
+    // ✅ userId가 있어야 상세 호출 (백엔드가 userId 필수로 받고 있어서)
+    if (userId) {
+      loadPost();
+    }
     loadComments();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [postId]);
+  }, [postId, userId]);
 
   if (!fontsLoaded) return null;
 
   // ========= API: 게시글 상세 =========
   async function loadPost() {
     try {
+      if (!userId) return; // 로그인 전이면 호출하지 않음
+
       setLoadingPost(true);
-      const res = await fetch(`${API}/posts/${postId}?userId=${USER_ID}`);
+      const res = await fetch(`${API}/posts/${postId}?userId=${userId}`);
       if (!res.ok) throw new Error(`GET /posts/${postId} 실패: ${res.status}`);
       const data = await res.json();
 
@@ -101,12 +107,12 @@ export default function CommunityFeedScreen(props: any) {
         content: data.content,
         category: data.category, // "TIP" | "QUESTION"
         hasPhoto: !!data.hasPhoto,
-        username: data.username ?? "익명",
+        username: data.username ?? data.writer ?? "익명",
         avatar: data.avatar ?? "🙂",
         timeAgo: data.timeAgo ?? "",
-        likes: data.likes ?? 0,
+        likes: data.likes ?? data.likeCount ?? 0,
         liked: !!data.liked,
-        comments: data.comments ?? undefined,
+        comments: data.comments ?? data.commentCount ?? undefined,
       };
 
       setPost(mapped);
@@ -131,10 +137,10 @@ export default function CommunityFeedScreen(props: any) {
       const items: Comment[] = (list ?? []).map((c: any) => ({
         id: String(c.id),
         content: c.content,
-        username: c.username ?? "익명",
+        username: c.username ?? c.writer ?? "익명",
         avatar: c.avatar ?? "🙂",
         timeAgo: c.timeAgo ?? "",
-        likes: c.likes ?? 0,
+        likes: c.likes ?? c.likeCount ?? 0,
         isLiked: !!c.liked,
         parentId: c.parentId ? String(c.parentId) : null,
       }));
@@ -152,13 +158,19 @@ export default function CommunityFeedScreen(props: any) {
     const text = parentId ? replyText : commentText;
     if (!text.trim()) return;
 
+    // ✅ 로그인 여부 체크
+    if (!isLoggedIn || !userId) {
+      Alert.alert("로그인이 필요합니다", "댓글을 작성하려면 먼저 로그인해주세요.");
+      return;
+    }
+
     try {
       setSubmitting(true);
       const body: any = { content: text.trim() };
       if (parentId) body.parentId = parentId;
 
       const res = await fetch(
-        `${API}/posts/${postId}/comments?userId=${USER_ID}`,
+        `${API}/posts/${postId}/comments?userId=${userId}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -174,7 +186,7 @@ export default function CommunityFeedScreen(props: any) {
       const newComment: Comment = {
         id: String(createdId),
         content: text.trim(),
-        username: "나",
+        username: nickname || "나", // ✅ 로그인한 유저 닉네임 사용
         avatar: "🙂",
         timeAgo: "방금 전",
         likes: 0,
@@ -207,23 +219,24 @@ export default function CommunityFeedScreen(props: any) {
 
   // ========= API: 게시글 좋아요 =========
   async function toggleLike() {
-    // 낙관적 업데이트 (state 최신값 기준으로 처리)
-    let nextLiked: boolean;
-    setIsLiked((prev) => {
-      nextLiked = !prev;
-      return nextLiked;
-    });
+    if (!isLoggedIn || !userId) {
+      Alert.alert("로그인이 필요합니다", "좋아요를 누르려면 먼저 로그인해주세요.");
+      return;
+    }
+
+    // 낙관적 업데이트
+    setIsLiked((prev) => !prev);
     setLikes((prev) => prev + (isLiked ? -1 : 1));
 
     try {
       const res = await fetch(
-        `${API}/posts/${postId}/like?userId=${USER_ID}`,
+        `${API}/posts/${postId}/like?userId=${userId}`,
         { method: "POST" }
       );
       if (!res.ok)
         throw new Error(`POST /posts/${postId}/like 실패: ${res.status}`);
     } catch (e) {
-      // 실패 시 롤백
+      // 롤백
       setIsLiked((prev) => !prev);
       setLikes((prev) => prev + (isLiked ? 1 : -1));
     }
@@ -231,6 +244,11 @@ export default function CommunityFeedScreen(props: any) {
 
   // ========= API: 댓글 좋아요 =========
   async function toggleCommentLike(commentId: string) {
+    if (!isLoggedIn || !userId) {
+      Alert.alert("로그인이 필요합니다", "좋아요를 누르려면 먼저 로그인해주세요.");
+      return;
+    }
+
     // 낙관적 업데이트
     setComments((prev) =>
       prev.map((c) =>
@@ -245,7 +263,7 @@ export default function CommunityFeedScreen(props: any) {
     );
     try {
       const res = await fetch(
-        `${API}/comments/${commentId}/like?userId=${USER_ID}`,
+        `${API}/comments/${commentId}/like?userId=${userId}`,
         { method: "POST" }
       );
       if (!res.ok)
@@ -268,12 +286,17 @@ export default function CommunityFeedScreen(props: any) {
     }
   }
 
-  // ========= API: 신고 =========
+  // ========= API: 신고 (간단 버전) =========
   async function reportPostHandler() {
+    if (!isLoggedIn || !userId) {
+      Alert.alert("로그인이 필요합니다", "신고하려면 먼저 로그인해주세요.");
+      return;
+    }
+
     try {
       setShowHeaderMenu(false);
       const res = await fetch(
-        `${API}/posts/${postId}/report?userId=${USER_ID}`,
+        `${API}/posts/${postId}/report?userId=${userId}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
