@@ -23,7 +23,7 @@ public class CommunityService {
     private final PostReportRepository postReportRepository;
     private final CommentRepository commentRepository;
     private final CommentLikeRepository commentLikeRepository;
-    private final UserRepository userRepository;
+    private final UserRepository userRepository;   // 기존에 있던 거 재사용
 
     /**
      * 게시글 목록
@@ -47,11 +47,6 @@ public class CommunityService {
                 .likeCount(p.getLikeCount())
                 .commentCount(p.getCommentCount())
                 .createdAt(p.getCreatedAt())
-                // ✅ 프론트에서 쓰는 필드 추가
-                .content(p.getContent())
-                .hasPhoto(!p.getImages().isEmpty())
-                .liked(liked)   // ✅
-                .mine(mine)     // ✅
                 .build());
     }
 
@@ -73,8 +68,6 @@ public class CommunityService {
                 .likeCount(post.getLikeCount())
                 .commentCount(post.getCommentCount())
                 .images(post.getImages().stream().map(PostImage::getImageUrl).toList())
-                .liked(liked)   // ✅
-                .mine(mine)     // ✅
                 .build();
     }
 
@@ -103,16 +96,6 @@ public class CommunityService {
         return post.getId();
     }
 
-    public void deletePost(Long postId, Long userId) {
-        Post post = postRepository.findById(postId)
-                .orElseThrow(() -> new IllegalArgumentException("게시글이 없습니다."));
-
-        if (post.getAuthor() == null || !post.getAuthor().getId().equals(userId)) {
-            throw new IllegalStateException("본인 글만 삭제할 수 있습니다.");
-        }
-
-        postRepository.delete(post);
-    }
     /**
      * 게시글 수정
      */
@@ -199,6 +182,7 @@ public class CommunityService {
      */
     @Transactional(readOnly = true)
     public List<CommentResponse> getComments(Long postId) {
+        // 부모 댓글만 가져오고, 자식은 각각 조회
         List<Comment> parents = commentRepository.findByPostIdAndParentIsNullOrderByCreatedAtAsc(postId);
 
         return parents.stream()
