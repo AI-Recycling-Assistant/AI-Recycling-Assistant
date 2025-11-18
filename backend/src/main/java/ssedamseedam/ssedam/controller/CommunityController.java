@@ -26,9 +26,10 @@ public class CommunityController {
     public Page<PostSummaryResponse> getPosts(
             @RequestParam(required = false) PostCategory category,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Long userId
     ) {
-        return communityService.getPosts(category, page, size);
+        return communityService.getPosts(category, page, size, userId);
     }
 
     /**
@@ -40,6 +41,16 @@ public class CommunityController {
             @RequestParam Long userId   // TODO: 인증으로 대체
     ) {
         return communityService.getPostDetail(postId, userId);
+    }
+
+    // CommunityController.java
+
+    @DeleteMapping("/posts/{postId}")
+    public void deletePost(
+            @PathVariable Long postId,
+            @RequestParam Long userId
+    ) {
+        communityService.deletePost(postId, userId);
     }
 
     /**

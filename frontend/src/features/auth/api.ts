@@ -6,8 +6,12 @@ export type LoginRequest = {
   username: string;
   password: string;
 };
+
 export type LoginResponse = {
-  message: string; // "로그인 성공"
+  message: string;   // "로그인 성공"
+  userId: number;    // ✅ 백엔드 User PK
+  username: string;  // ✅ 로그인 ID
+  nickname: string;  // ✅ 닉네임
 };
 
 // 회원가입 요청 타입
@@ -18,6 +22,7 @@ export type RegisterRequest = {
   passwordCheck: string;
   nickname: string;
 };
+
 export type RegisterResponse = {
   message: string; // "회원가입 성공"
 };

@@ -14,6 +14,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useEffect, useMemo, useState } from "react";
 import { router } from "expo-router";
+import { useAuth } from "@store/auth";
+
+// expo-router 기본 헤더 숨기기
+export const options = {
+  headerShown: false,
+};
 
 // ===== 타입 =====
 type CommunityPost = {
@@ -28,6 +34,7 @@ type CommunityPost = {
   likes?: number;
   comments?: number;
   liked?: boolean;
+  mine?: boolean;
 };
 
 type CategoryTab = "전체" | "질문" | "팁";
@@ -44,12 +51,9 @@ type SpringPage<T> = {
 };
 
 // ===== API 기본 설정 =====
-// Android 에뮬레이터: 10.0.2.2
-// 웹/ios 시뮬레이터: localhost
 const BASE_URL =
   Platform.OS === "android" ? "http://10.0.2.2:8080" : "http://localhost:8080";
 const API = `${BASE_URL}/api/community`;
-const USER_ID = 1;
 
 // 탭 → 서버 카테고리 매핑
 function mapTabToServerCategory(cat: CategoryTab): "QUESTION" | "TIP" | "" {
@@ -60,6 +64,8 @@ function mapTabToServerCategory(cat: CategoryTab): "QUESTION" | "TIP" | "" {
 
 export default function CommunityMainScreen() {
   const [fontsLoaded] = useFonts({ Jua_400Regular });
+
+  const { userId, isLoggedIn } = useAuth();
 
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("전체");
@@ -80,7 +86,7 @@ export default function CommunityMainScreen() {
   useEffect(() => {
     loadPosts(true).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverCategory]);
+  }, [serverCategory, userId]);
 
   if (!fontsLoaded) return null;
 
@@ -95,6 +101,7 @@ export default function CommunityMainScreen() {
       params.append("page", String(nextPage));
       params.append("size", String(size));
       if (serverCategory) params.append("category", serverCategory);
+      if (userId) params.append("userId", String(userId)); // ✅ 로그인 유저 id
 
       const res = await fetch(`${API}/posts?${params.toString()}`);
       if (!res.ok) {
@@ -110,13 +117,14 @@ export default function CommunityMainScreen() {
         title: p.title ?? "",
         content: p.content ?? "",
         category: p.category as "TIP" | "QUESTION",
-        comments: p.comments ?? 0,
-        likes: p.likes ?? 0,
+        comments: p.commentCount ?? p.comments ?? 0,
+        likes: p.likeCount ?? p.likes ?? 0,
         liked: !!p.liked,
-        username: p.username ?? "익명",
+        username: p.writer ?? p.username ?? "익명",
         avatar: p.avatar ?? "🙂",
         timeAgo: p.timeAgo ?? "",
         hasPhoto: !!p.hasPhoto,
+        mine: !!p.mine,
       }));
 
       if (reset) {
@@ -138,45 +146,48 @@ export default function CommunityMainScreen() {
         setHasMore(mapped.length === size);
       }
     } catch (e: any) {
-      // fetch 자체가 실패한 경우(서버 꺼짐, CORS 등) -> 브라우저에선 "Failed to fetch"
       setErrorText(e?.message ?? "목록을 불러오는 동안 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
   }
 
-  // ===== 좋아요 =====
+  // ===== 좋아요 (한 번만 누르는 방식) =====
   async function toggleLike(postId: string) {
+    if (!isLoggedIn || !userId) {
+      Alert.alert("로그인이 필요합니다", "좋아요를 누르려면 먼저 로그인해주세요.");
+      return;
+    }
+
+    const target = posts.find((p) => p.id === postId);
+    if (target?.liked) {
+      // 이미 좋아요한 글이면 더 이상 토글하지 않음
+      return;
+    }
+
+    // 낙관적 업데이트
     setPosts((prev) =>
       prev.map((p) =>
         p.id === postId
-          ? {
-              ...p,
-              liked: !p.liked,
-              likes: (p.likes ?? 0) + (p.liked ? -1 : 1),
-            }
+          ? { ...p, liked: true, likes: (p.likes ?? 0) + 1 }
           : p
       )
     );
 
     try {
       const res = await fetch(
-        `${API}/posts/${postId}/like?userId=${USER_ID}`,
+        `${API}/posts/${postId}/like?userId=${userId}`,
         { method: "POST" }
       );
       if (!res.ok) {
         throw new Error(`좋아요 실패: ${res.status}`);
       }
     } catch (e) {
-      // 롤백
+      // 실패 시 롤백
       setPosts((prev) =>
         prev.map((p) =>
           p.id === postId
-            ? {
-                ...p,
-                liked: !p.liked,
-                likes: (p.likes ?? 0) + (p.liked ? -1 : 1),
-              }
+            ? { ...p, liked: false, likes: (p.likes ?? 1) - 1 }
             : p
         )
       );
@@ -184,25 +195,48 @@ export default function CommunityMainScreen() {
     }
   }
 
-  // ===== 신고 =====
-  async function reportPost(postId: string) {
-    try {
-      setActiveMenu(null);
-      const res = await fetch(
-        `${API}/posts/${postId}/report?userId=${USER_ID}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason: "부적절한 내용" }),
-        }
-      );
-      if (!res.ok) {
-        throw new Error(`신고 실패: ${res.status}`);
-      }
-      Alert.alert("신고 완료", "신고가 접수되었습니다.");
-    } catch (e: any) {
-      Alert.alert("오류", e?.message ?? "신고 중 오류가 발생했습니다.");
+  // ===== 게시글 삭제 =====
+  async function deletePost(postId: string) {
+    if (!isLoggedIn || !userId) {
+      Alert.alert("로그인이 필요합니다", "게시글을 삭제하려면 먼저 로그인해주세요.");
+      return;
     }
+
+    Alert.alert("삭제", "정말 이 게시글을 삭제할까요?", [
+      { text: "취소", style: "cancel" },
+      {
+        text: "삭제",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setActiveMenu(null);
+            const res = await fetch(
+              `${API}/posts/${postId}?userId=${userId}`,
+              { method: "DELETE" }
+            );
+            if (!res.ok) {
+              throw new Error(`삭제 실패: ${res.status}`);
+            }
+            setPosts((prev) => prev.filter((p) => p.id !== postId));
+          } catch (e: any) {
+            Alert.alert("오류", e?.message ?? "게시글 삭제에 실패했습니다.");
+          }
+        },
+      },
+    ]);
+  }
+
+  // ===== 신고 화면으로 이동 =====
+  function goToReport(postId: string) {
+    if (!isLoggedIn || !userId) {
+      Alert.alert("로그인이 필요합니다", "신고하려면 먼저 로그인해주세요.");
+      return;
+    }
+    setActiveMenu(null);
+    router.push({
+      pathname: "/community/community-report",
+      params: { postId },
+    });
   }
 
   const toggleMenu = (postId: string) =>
@@ -221,7 +255,7 @@ export default function CommunityMainScreen() {
   return (
     <TouchableWithoutFeedback onPress={() => setActiveMenu(null)}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        {/* 헤더 */}
+        {/* 헤더 (feed 스타일과 비슷하게 이미 잘 되어 있음) */}
         <View style={styles.header}>
           <Text style={styles.brand}>함께하는</Text>
           <Text style={styles.title}>쓰담이들 커뮤니티</Text>
@@ -230,6 +264,7 @@ export default function CommunityMainScreen() {
 
         {/* 카테고리 탭 */}
         <View style={styles.categoryTabs}>
+          {/* ... 그대로 ... */}
           <TouchableOpacity
             style={[styles.tab, activeCategory === "전체" && styles.activeTab]}
             onPress={() => onChangeTab("전체")}
@@ -316,24 +351,55 @@ export default function CommunityMainScreen() {
                     </TouchableOpacity>
                     {activeMenu === post.id && (
                       <View style={styles.dropdownMenu}>
-                        <TouchableOpacity
-                          style={[styles.menuItem, styles.dangerItem]}
-                          onPress={() => reportPost(post.id)}
-                        >
-                          <Text
-                            style={[styles.menuItemText, styles.dangerText]}
-                          >
-                            신고하기
-                          </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={styles.menuItem}
-                          onPress={() => hidePost(post.id)}
-                        >
-                          <Text style={styles.menuItemText}>
-                            게시글 숨기기
-                          </Text>
-                        </TouchableOpacity>
+                        {post.mine ? (
+                          <>
+                            <TouchableOpacity
+                              style={[styles.menuItem, styles.dangerItem]}
+                              onPress={() => deletePost(post.id)}
+                            >
+                              <Text
+                                style={[
+                                  styles.menuItemText,
+                                  styles.dangerText,
+                                ]}
+                              >
+                                게시글 삭제
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.menuItem}
+                              onPress={() => hidePost(post.id)}
+                            >
+                              <Text style={styles.menuItemText}>
+                                게시글 숨기기
+                              </Text>
+                            </TouchableOpacity>
+                          </>
+                        ) : (
+                          <>
+                            <TouchableOpacity
+                              style={[styles.menuItem, styles.dangerItem]}
+                              onPress={() => goToReport(post.id)}
+                            >
+                              <Text
+                                style={[
+                                  styles.menuItemText,
+                                  styles.dangerText,
+                                ]}
+                              >
+                                신고하기
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={styles.menuItem}
+                              onPress={() => hidePost(post.id)}
+                            >
+                              <Text style={styles.menuItemText}>
+                                게시글 숨기기
+                              </Text>
+                            </TouchableOpacity>
+                          </>
+                        )}
                       </View>
                     )}
                   </View>
@@ -385,10 +451,10 @@ export default function CommunityMainScreen() {
                   )}
                 </View>
 
-                {/* 내용 미리보기 */}
-                <Text style={styles.postContent} numberOfLines={2}>
+                {/* 🔻 내용 미리보기는 숨김 (원하면 삭제해도 됨) */}
+                {/* <Text style={styles.postContent} numberOfLines={2}>
                   {post.content}
-                </Text>
+                </Text> */}
 
                 {/* 액션 */}
                 <View style={styles.postActions}>
@@ -430,10 +496,7 @@ export default function CommunityMainScreen() {
                     </Text>
                   </TouchableOpacity>
 
-                  <View style={styles.actionButton}>
-                    <Ionicons name="share-outline" size={20} color="#6B7280" />
-                    <Text style={styles.actionText}>공유</Text>
-                  </View>
+                  {/* ✅ 공유 버튼 제거 */}
                 </View>
               </View>
             ))
@@ -455,9 +518,7 @@ export default function CommunityMainScreen() {
                 }}
                 onPress={() => loadPosts(false)}
               >
-                <Text
-                  style={{ color: "#fff", fontFamily: "Jua_400Regular" }}
-                >
+                <Text style={{ color: "#fff", fontFamily: "Jua_400Regular" }}>
                   더 보기
                 </Text>
               </TouchableOpacity>
@@ -477,7 +538,6 @@ export default function CommunityMainScreen() {
   );
 }
 
-// 스타일은 기존 그대로 사용
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   content: { paddingHorizontal: 20, paddingVertical: 24, paddingBottom: 100 },
@@ -493,9 +553,25 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  brand: { fontFamily: "Jua_400Regular", fontSize: 18, color: "#0F172A", letterSpacing: 0.3 },
-  title: { fontFamily: "Jua_400Regular", fontSize: 28, color: "#1AA179", letterSpacing: 0.2, marginTop: 4 },
-  subtitle: { fontFamily: "Jua_400Regular", fontSize: 14, color: "#6B7280", marginTop: 6 },
+  brand: {
+    fontFamily: "Jua_400Regular",
+    fontSize: 18,
+    color: "#0F172A",
+    letterSpacing: 0.3,
+  },
+  title: {
+    fontFamily: "Jua_400Regular",
+    fontSize: 28,
+    color: "#1AA179",
+    letterSpacing: 0.2,
+    marginTop: 4,
+  },
+  subtitle: {
+    fontFamily: "Jua_400Regular",
+    fontSize: 14,
+    color: "#6B7280",
+    marginTop: 6,
+  },
 
   categoryTabs: {
     flexDirection: "row",
@@ -525,16 +601,43 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  postHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
+  postHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
   userInfo: { flexDirection: "row", alignItems: "center" },
   avatar: { fontSize: 32, marginRight: 12 },
   userDetails: { flex: 1 },
-  username: { fontFamily: "Jua_400Regular", fontSize: 16, color: "#111827", marginBottom: 2 },
+  username: {
+    fontFamily: "Jua_400Regular",
+    fontSize: 16,
+    color: "#111827",
+    marginBottom: 2,
+  },
   timeAgo: { fontSize: 12, color: "#6B7280" },
-  postTitle: { fontFamily: "Jua_400Regular", fontSize: 16, color: "#111827", fontWeight: "600", marginBottom: 8, lineHeight: 20 },
+  postTitle: {
+    fontFamily: "Jua_400Regular",
+    fontSize: 16,
+    color: "#111827",
+    fontWeight: "600",
+    marginBottom: 8,
+    lineHeight: 20,
+  },
 
-  postMeta: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 },
-  categoryTag: { backgroundColor: "#F3F4F6", paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  postMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 12,
+  },
+  categoryTag: {
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
   categoryTagQuestion: { backgroundColor: "#EBF4FF" },
   categoryTagTip: { backgroundColor: "#F0FDF4" },
   categoryTagText: { fontSize: 12, fontFamily: "Jua_400Regular" },
@@ -542,12 +645,33 @@ const styles = StyleSheet.create({
   categoryTagTextTip: { color: "#16A34A" },
 
   photoIndicator: { flexDirection: "row", alignItems: "center", gap: 4 },
-  photoIndicatorText: { fontSize: 12, color: "#6B7280", fontFamily: "Jua_400Regular" },
-  postContent: { fontFamily: "Jua_400Regular", fontSize: 14, color: "#6B7280", lineHeight: 20, marginBottom: 16 },
+  photoIndicatorText: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontFamily: "Jua_400Regular",
+  },
+  postContent: {
+    fontFamily: "Jua_400Regular",
+    fontSize: 14,
+    color: "#6B7280",
+    lineHeight: 20,
+    marginBottom: 16,
+  },
 
-  postActions: { flexDirection: "row", alignItems: "center", gap: 20, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#F3F4F6" },
+  postActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 20,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+  },
   actionButton: { flexDirection: "row", alignItems: "center", gap: 6 },
-  actionText: { fontSize: 14, color: "#6B7280", fontFamily: "Jua_400Regular" },
+  actionText: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontFamily: "Jua_400Regular",
+  },
   likedText: { color: "#EF4444" },
 
   floatingButton: {
@@ -582,11 +706,28 @@ const styles = StyleSheet.create({
     minWidth: 120,
     zIndex: 1000,
   },
-  menuItem: { paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
-  menuItemText: { fontSize: 14, color: "#374151", fontFamily: "Jua_400Regular" },
+  menuItem: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  menuItemText: {
+    fontSize: 14,
+    color: "#374151",
+    fontFamily: "Jua_400Regular",
+  },
   dangerItem: { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
   dangerText: { color: "#EF4444" },
 
-  emptyContainer: { alignItems: "center", justifyContent: "center", paddingVertical: 60 },
-  emptyText: { fontSize: 16, color: "#9CA3AF", fontFamily: "Jua_400Regular" },
+  emptyContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 60,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: "#9CA3AF",
+    fontFamily: "Jua_400Regular",
+  },
 });

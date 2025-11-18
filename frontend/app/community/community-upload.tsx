@@ -15,12 +15,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useState } from "react";
 import { router } from "expo-router";
+import { useAuth } from "@store/auth"; // ✅ 로그인 정보 사용
 
 // ===== API 기본 설정 =====
 const BASE_URL =
   Platform.OS === "android" ? "http://10.0.2.2:8080" : "http://localhost:8080";
 const API = `${BASE_URL}/api/community`;
-const USER_ID = 1;
 
 type ServerCategory = "QUESTION" | "TIP";
 
@@ -46,6 +46,9 @@ export default function CommunityUploadScreen() {
 
   const categories = ["질문", "팁"];
 
+  // ✅ 전역 auth 에서 현재 로그인 유저 정보 가져오기
+  const { userId, isLoggedIn } = useAuth();
+
   if (!fontsLoaded) return null;
 
   const validate = () => {
@@ -66,6 +69,12 @@ export default function CommunityUploadScreen() {
 
   // ===== 게시글 등록 =====
   const handlePublish = async () => {
+    // ✅ 로그인 여부 체크
+    if (!isLoggedIn || !userId) {
+      Alert.alert("로그인이 필요합니다", "게시물을 작성하려면 먼저 로그인해주세요.");
+      return;
+    }
+
     if (!validate()) return;
 
     const serverCategory = mapUiToServerCategory(selectedCategory);
@@ -84,7 +93,8 @@ export default function CommunityUploadScreen() {
         hasPhoto,
       };
 
-      const res = await fetch(`${API}/posts?userId=${USER_ID}`, {
+      // ✅ 하드코딩 대신 실제 로그인한 유저의 userId 사용
+      const res = await fetch(`${API}/posts?userId=${userId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
