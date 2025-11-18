@@ -1,3 +1,4 @@
+// login.tsx
 // app/(auth)/login.tsx
 import React, { useState } from "react";
 import {
@@ -10,12 +11,11 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
 } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { login as apiLogin } from "@/src/features/auth/api";
-import { useAuth } from "@store/auth";
+import { useAuth } from "@store/auth"; // ✅ 전역 로그인 상태
 
 const COLORS = {
   bg: "#F7F9FB",
@@ -31,101 +31,134 @@ const COLORS = {
 export default function LoginScreen() {
   const [id, setId] = useState("");
   const [pw, setPw] = useState("");
+
+  const [focus, setFocus] = useState<null | string>(null);
   const [loading, setLoading] = useState(false);
-  const [focus, setFocus] = useState<"id" | "pw" | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false); // ✅ 로그인 성공 화면 전환용
 
   const router = useRouter();
-  const doLogin = useAuth((s) => s.login);
+  const { login } = useAuth(); // ✅ 전역 store에서 login 액션 가져오기
 
   const handleLogin = async () => {
     const _id = id.trim();
-    if (!_id || !pw) {
-      return Alert.alert("확인", "아이디와 비밀번호를 모두 입력해주세요.");
+    const _pw = pw;
+
+    setFormError(null);
+
+    if (!_id) {
+      const msg = "아이디를 입력해주세요.";
+      setFormError(msg);
+      Alert.alert("확인", msg);
+      return;
+    }
+    if (!_pw) {
+      const msg = "비밀번호를 입력해주세요.";
+      setFormError(msg);
+      Alert.alert("확인", msg);
+      return;
     }
 
     try {
       setLoading(true);
 
-      // 👇 백엔드 LoginRequest 타입이 { username, password } 라고 가정
-      await apiLogin({
+      const res = await apiLogin({
         username: _id,
-        password: pw,
+        password: _pw,
       });
+      console.log("로그인 성공 응답:", res);
 
-      // 로그인 성공시 클라이언트 상태 업데이트
-      doLogin(_id);
-      router.replace("/(tabs)"); // 성공 후 홈 탭으로
+      // ✅ 1) 전역 상태 업데이트 (홈에서 쓸 이름 저장)
+      //    여기서는 일단 로그인 아이디(_id)를 이름으로 사용
+      login(_id);
+
+      // ✅ 2) 로그인 성공 화면으로 전환
+      setSuccess(true);
     } catch (e: any) {
-      Alert.alert("오류", e?.message ?? "로그인 중 오류가 발생했습니다.");
+      console.log("로그인 에러:", e);
+
+      let msg: string;
+      if (e?.message === "Network request failed") {
+        msg = "서버와 통신할 수 없습니다. 네트워크 상태를 확인해주세요.";
+      } else {
+        msg = "아이디 또는 비밀번호가 잘못되었습니다.";
+      }
+
+      setFormError(msg);
+      Alert.alert("로그인 실패", msg);
     } finally {
       setLoading(false);
     }
   };
 
+  // ✅ 로그인 성공 화면
+  if (success) {
+    return (
+      <KeyboardAvoidingView
+        style={s.container}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View style={s.centerWrap}>
+          <View style={s.card}>
+            <Text style={s.title}>로그인에 성공하셨습니다! 🎉</Text>
+            <Text style={[s.caption, { marginTop: 10 }]}>
+              홈 화면으로 이동합니다.
+            </Text>
+
+            <TouchableOpacity
+              style={[s.primaryBtn, { marginTop: 24 }]}
+              onPress={() => router.replace("/(tabs)")} // ✅ tabs/index 가 홈
+            >
+              <Text style={s.primaryText}>확인</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ✅ 기본 로그인 폼 화면
   return (
     <KeyboardAvoidingView
       style={s.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
-      <ScrollView
-        contentContainerStyle={s.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
+      <View style={s.centerWrap}>
+        {/* 헤더 */}
         <View style={s.header}>
           <Text style={s.title}>로그인</Text>
-          <Text style={s.caption}>사진으로 분리배출을 더 쉽게</Text>
+          {/* "다시 오셨군요 😊" 제거 */}
         </View>
 
+        {/* 카드 */}
         <View style={s.card}>
-          {/* 아이디 */}
-          <View style={[s.inputWrap, focus === "id" && s.inputWrapActive]}>
-            <Ionicons
-              name="person-outline"
-              size={20}
-              color={focus === "id" ? COLORS.primaryDark : COLORS.sub}
-              style={s.inputIcon}
-            />
-            <TextInput
-              style={s.input}
-              value={id}
-              onChangeText={setId}
-              placeholder="아이디"
-              placeholderTextColor="#94A3B8"
-              autoCapitalize="none"
-              onFocus={() => setFocus("id")}
-              onBlur={() => setFocus(null)}
-              returnKeyType="next"
-            />
-          </View>
+          {/* 에러 박스 */}
+          {formError && (
+            <View style={s.errorBox}>
+              <Text style={s.errorText}>{formError}</Text>
+            </View>
+          )}
 
-          {/* 비밀번호 */}
-          <View
-            style={[
-              s.inputWrap,
-              focus === "pw" && s.inputWrapActive,
-              { marginTop: 14 },
-            ]}
-          >
-            <Ionicons
-              name="lock-closed-outline"
-              size={20}
-              color={focus === "pw" ? COLORS.primaryDark : COLORS.sub}
-              style={s.inputIcon}
-            />
-            <TextInput
-              style={s.input}
-              value={pw}
-              onChangeText={setPw}
-              placeholder="비밀번호"
-              placeholderTextColor="#94A3B8"
-              autoCapitalize="none"
-              secureTextEntry
-              onFocus={() => setFocus("pw")}
-              onBlur={() => setFocus(null)}
-              returnKeyType="done"
-              onSubmitEditing={handleLogin}
-            />
-          </View>
+          <InputWithIcon
+            label="아이디"
+            icon="at-outline"
+            value={id}
+            onChangeText={setId}
+            onFocus={() => setFocus("id")}
+            onBlur={() => setFocus(null)}
+            focused={focus === "id"}
+          />
+
+          <InputWithIcon
+            label="비밀번호"
+            icon="lock-closed-outline"
+            value={pw}
+            onChangeText={setPw}
+            secureTextEntry
+            onFocus={() => setFocus("pw")}
+            onBlur={() => setFocus(null)}
+            focused={focus === "pw"}
+          />
 
           {/* 로그인 버튼 */}
           <TouchableOpacity
@@ -140,36 +173,52 @@ export default function LoginScreen() {
             )}
           </TouchableOpacity>
 
-          {/* 보조 링크 */}
-          <Link href="/(auth)/register" asChild>
-            <TouchableOpacity style={s.linkBtn}>
-              <Text style={s.linkText}>아직 회원가입을 안하셨나요?</Text>
-            </TouchableOpacity>
-          </Link>
+          {/* 회원가입 이동 */}
+          <TouchableOpacity
+            style={s.linkBtn}
+            onPress={() => router.push("/(auth)/register")}
+          >
+            <Text style={s.linkText}>아직 계정이 없으신가요? 회원가입하기</Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
+/* --- 재사용 입력 컴포넌트 --- */
+function InputWithIcon({ label, icon, focused, style, ...rest }: any) {
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={s.label}>{label}</Text>
+      <View style={[s.inputWrap, focused && s.inputWrapActive, style]}>
+        <Ionicons
+          name={icon}
+          size={20}
+          color={focused ? COLORS.primaryDark : COLORS.sub}
+          style={s.inputIcon}
+        />
+        <TextInput
+          {...rest}
+          style={s.input}
+          placeholderTextColor="#94A3B8"
+          autoCapitalize="none"
+        />
+      </View>
+    </View>
+  );
+}
+
+/* --- 스타일 --- */
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
-
-  // 중앙 정렬 대신 ScrollView content에서 정렬
-  scrollContent: {
-    flexGrow: 1,
-    padding: 20,
+  centerWrap: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    padding: 20,
   },
-
   header: { alignItems: "center", marginBottom: 14 },
-  brand: {
-    fontFamily: "Jua_400Regular",
-    color: COLORS.text,
-    fontSize: 18,
-    letterSpacing: 0.3,
-  },
   title: {
     fontFamily: "Jua_400Regular",
     color: COLORS.text,
@@ -180,7 +229,7 @@ const s = StyleSheet.create({
 
   card: {
     width: "100%",
-    maxWidth: 480,
+    maxWidth: 520,
     backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 18,
@@ -190,6 +239,20 @@ const s = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
+
+  errorBox: {
+    backgroundColor: "#FEE2E2",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  errorText: {
+    color: COLORS.error,
+    fontSize: 13,
+  },
+
+  label: { color: COLORS.sub, fontSize: 13, marginBottom: 6 },
 
   inputWrap: {
     height: 52,
@@ -216,14 +279,17 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.primary,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 18,
+    marginTop: 10,
   },
   primaryText: { color: "#fff", fontWeight: "700", fontSize: 16 },
 
-  linkBtn: { paddingVertical: 12, alignItems: "center" },
+  linkBtn: {
+    marginTop: 14,
+    alignItems: "center",
+  },
   linkText: {
-    color: COLORS.primaryDark,
-    textDecorationLine: "underline",
+    color: COLORS.sub,
     fontSize: 13,
+    textDecorationLine: "underline",
   },
 });
