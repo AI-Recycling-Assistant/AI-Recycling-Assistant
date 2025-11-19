@@ -10,12 +10,14 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useState } from "react";
 import { router } from "expo-router";
 import { useAuth } from "@store/auth"; // ✅ 로그인 정보 사용
+import * as ImagePicker from "expo-image-picker";
 
 // ===== API 기본 설정 =====
 const BASE_URL =
@@ -38,7 +40,9 @@ export default function CommunityUploadScreen() {
   const [categoryPressed, setCategoryPressed] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [hasPhoto, setHasPhoto] = useState(false);
+
+  // ✅ 선택된 이미지 uri 들
+  const [imageUris, setImageUris] = useState<string[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
@@ -67,6 +71,33 @@ export default function CommunityUploadScreen() {
     return true;
   };
 
+  // ===== 사진 선택 (갤러리 열기) =====
+  const handleSelectPhotos = async () => {
+    if (submitting) return;
+
+    // 권한 요청
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "권한 필요",
+        "사진을 첨부하려면 사진/앨범 접근 권한을 허용해주세요."
+      );
+      return;
+    }
+
+    // 갤러리 열기
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+    });
+
+    if (result.canceled) return;
+
+    const uris = result.assets.map((a) => a.uri);
+    setImageUris(uris);
+  };
+
   // ===== 게시글 등록 =====
   const handlePublish = async () => {
     // ✅ 로그인 여부 체크
@@ -83,29 +114,38 @@ export default function CommunityUploadScreen() {
       return;
     }
 
+    const body = {
+      title: title.trim(),
+      content: content.trim(),
+      category: serverCategory,
+      draft: false,          // 임시저장 아님
+      imageUrls: imageUris,  // ✅ 선택된 이미지 uri 배열
+    };
+
+    // ✅ 여기서 실제 보낼 body 확인
+    console.log("게시물 등록 body:", body);
+
     try {
       setSubmitting(true);
 
-      const body = {
-        title: title.trim(),
-        content: content.trim(),
-        category: serverCategory,
-        hasPhoto,
-      };
-
-      // ✅ 하드코딩 대신 실제 로그인한 유저의 userId 사용
       const res = await fetch(`${API}/posts?userId=${userId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
 
-      if (!res.ok) throw new Error(`게시물 등록 실패: ${res.status}`);
+      if (!res.ok) {
+        // 서버 에러 로그도 보려고 text 뽑기
+        const text = await res.text().catch(() => "");
+        console.log("POST /posts 실패 응답:", res.status, text);
+        throw new Error(`게시물 등록 실패: ${res.status}`);
+      }
 
       const postId = await res.json(); // Long 반환
       setCreatedPostId(String(postId));
       setShowSuccess(true);
     } catch (e: any) {
+      console.log("게시물 등록 중 오류:", e);
       Alert.alert("오류", e?.message ?? "게시물 등록 중 오류가 발생했습니다.");
     } finally {
       setSubmitting(false);
@@ -228,19 +268,34 @@ export default function CommunityUploadScreen() {
           />
         </View>
 
-        {/* 사진 첨부 (플래그 전송) */}
+        {/* 사진 첨부 */}
         <View style={styles.photoContainer}>
           <Text style={styles.photoLabel}>사진 첨부</Text>
           <TouchableOpacity
             style={styles.photoButton}
-            onPress={() => setHasPhoto(!hasPhoto)}
+            onPress={handleSelectPhotos}
             disabled={submitting}
           >
             <Ionicons name="camera-outline" size={24} color="#6B7280" />
             <Text style={styles.photoButtonText}>
-              {hasPhoto ? "사진이 첨부되었습니다" : "사진 추가하기"}
+              {imageUris.length > 0
+                ? "사진이 첨부되었습니다"
+                : "사진 추가하기"}
             </Text>
           </TouchableOpacity>
+
+          {/* 선택된 사진 미리보기 */}
+          {imageUris.length > 0 && (
+            <View style={styles.previewContainer}>
+              {imageUris.map((uri) => (
+                <Image
+                  key={uri}
+                  source={{ uri }}
+                  style={styles.previewImage}
+                />
+              ))}
+            </View>
+          )}
         </View>
 
         {/* 하단 버튼 */}
@@ -419,6 +474,17 @@ const styles = StyleSheet.create({
     fontFamily: "Jua_400Regular",
     fontSize: 14,
     color: "#6B7280",
+  },
+  previewContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 12,
+    gap: 8,
+  },
+  previewImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
   },
 
   bottomButtons: { flexDirection: "row", gap: 12, marginTop: 32 },
