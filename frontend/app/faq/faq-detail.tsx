@@ -2,18 +2,35 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated } from "
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useFaqDetail, useFaqVote } from "../../src/features/faq/hooks";
 
 export default function FAQDetailScreen() {
   const [fontsLoaded] = useFonts({ Jua_400Regular });
   const [isHelpful, setIsHelpful] = useState(false);
   const [helpfulPressed, setHelpfulPressed] = useState(false);
   const [sharePressed, setSharePressed] = useState(false);
-  const [relatedPressed, setRelatedPressed] = useState({});
+  const [relatedPressed, setRelatedPressed] = useState<{[key: number]: boolean}>({});
   const [backPressed, setBackPressed] = useState(false);
   const [feedbackPressed, setFeedbackPressed] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
   const router = useRouter();
+  const { id } = useLocalSearchParams();
+  
+  const { data: faq, isLoading } = useFaqDetail(Number(id));
+  const voteMutation = useFaqVote();
+  
+  const handleVote = () => {
+    if (!faq) return;
+    voteMutation.mutate({
+      id: faq.id,
+      voteData: {
+        userId: "temp-user-id", // 실제 사용자 ID로 교체 필요
+        vote: "UP"
+      }
+    });
+    setIsHelpful(true);
+  };
   
   useEffect(() => {
     Animated.timing(slideAnim, {
@@ -29,7 +46,7 @@ export default function FAQDetailScreen() {
       duration: 300,
       useNativeDriver: true,
     }).start(() => {
-      router.push('/faq/feedback');
+      router.push('/faq/faq-feedback');
     });
   };
 
@@ -67,39 +84,32 @@ export default function FAQDetailScreen() {
       </View>
 
       {/* 질문 */}
-      <View style={styles.questionContainer}>
-        <View style={styles.categoryBadge}>
-          <Text style={styles.categoryText}>플라스틱</Text>
-        </View>
-        <Text style={styles.questionTitle}>플라스틱 용기에 라벨을 떼야 하나요?</Text>
-        <View style={styles.questionMeta}>
-          <View style={styles.helpfulInfo}>
-            <Ionicons name="thumbs-up-outline" size={16} color="#6B7280" />
-            <Text style={styles.helpfulText}>도움됨 124</Text>
+      {isLoading ? (
+        <Text style={styles.loadingText}>로딩 중...</Text>
+      ) : faq ? (
+        <View style={styles.questionContainer}>
+          <View style={styles.categoryBadge}>
+            <Text style={styles.categoryText}>{faq.category}</Text>
           </View>
-          <Text style={styles.dateText}>2024.01.15</Text>
+          <Text style={styles.questionTitle}>{faq.question}</Text>
+          <View style={styles.questionMeta}>
+            <View style={styles.helpfulInfo}>
+              <Ionicons name="thumbs-up-outline" size={16} color="#6B7280" />
+              <Text style={styles.helpfulText}>도움됨 {faq.helpful}</Text>
+            </View>
+            <Text style={styles.dateText}>{new Date(faq.createdAt).toLocaleDateString('ko-KR')}</Text>
+          </View>
         </View>
-      </View>
+      ) : (
+        <Text style={styles.errorText}>FAQ를 불러올 수 없습니다.</Text>
+      )}
 
       {/* 내용 */}
-      <View style={styles.contentContainer}>
-        <Text style={styles.contentText}>
-          플라스틱 용기에 붙어있는 라벨은 가능한 한 제거해주시는 것이 좋습니다.{'\n\n'}
-          
-          <Text style={styles.boldText}>🔍 라벨 제거가 필요한 이유</Text>{'\n'}
-          • 재활용 과정에서 라벨이 섞이면 품질이 떨어집니다{'\n'}
-          • 라벨의 접착제 성분이 재활용을 방해할 수 있습니다{'\n'}
-          • 깨끗한 플라스틱일수록 재활용 효율이 높아집니다{'\n\n'}
-          
-          <Text style={styles.boldText}>📋 라벨 제거 단계</Text>{'\n'}
-          1️⃣ 따뜻한 물에 담가 접착제를 불려주세요{'\n'}
-          2️⃣ 손으로 천천히 떼어내주세요{'\n'}
-          3️⃣ 남은 접착제는 중성세제로 제거해주세요{'\n\n'}
-          
-          <Text style={styles.boldText}>💡 꿀팁</Text>{'\n'}
-          라벨이 잘 떨어지지 않는다면, 무리하게 제거하지 마시고 그대로 배출하셔도 됩니다.
-        </Text>
-      </View>
+      {faq && (
+        <View style={styles.contentContainer}>
+          <Text style={styles.contentText}>{faq.answer}</Text>
+        </View>
+      )}
 
       {/* 도움됨 버튼 */}
       <View style={styles.actionContainer}>
@@ -107,6 +117,7 @@ export default function FAQDetailScreen() {
           style={[styles.helpfulButton, helpfulPressed && styles.helpfulButtonHover]}
           onPressIn={() => setHelpfulPressed(true)}
           onPressOut={() => setHelpfulPressed(false)}
+          onPress={handleVote}
         >
           <Ionicons 
             name="thumbs-up-outline" 
@@ -137,7 +148,7 @@ export default function FAQDetailScreen() {
           style={[styles.feedbackButton, feedbackPressed && styles.feedbackButtonPressed]}
           onPressIn={() => setFeedbackPressed(true)}
           onPressOut={() => setFeedbackPressed(false)}
-          onPress={navigateToFeedback}
+          onPress={() => router.push('/faq/faq-feedback')}
         >
           <Text style={styles.feedbackButtonText}>피드백하기</Text>
           <Ionicons 
@@ -383,5 +394,19 @@ const styles = StyleSheet.create({
   },
   feedbackArrowVisible: {
     opacity: 1,
+  },
+  loadingText: {
+    textAlign: "center",
+    fontSize: 16,
+    color: "#6B7280",
+    marginTop: 40,
+    fontFamily: "Jua_400Regular",
+  },
+  errorText: {
+    textAlign: "center",
+    fontSize: 16,
+    color: "#EF4444",
+    marginTop: 40,
+    fontFamily: "Jua_400Regular",
   },
 });

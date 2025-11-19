@@ -1,13 +1,23 @@
 // app/(tabs)/index.tsx
 import { Link } from "expo-router";
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native";
 import { useAuth } from "@store/auth";
 import RecycleBinButton from "@components/RecycleBinButton";
 import RoundedTitle from "@/components/RoundedTitle";
 
 export default function Home() {
-  const { isLoggedIn, username, logout } = useAuth();
+  const { isLoggedIn, username, logout, hydrated } = useAuth();
   const displayName = username ?? "사용자";
+
+  // ✅ 아직 zustand persist가 localStorage/AsyncStorage에서 값을 못 읽어온 상태이면
+  //    잠깐 로딩 화면만 보여준다.
+  if (!hydrated) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={s.container}>
@@ -106,6 +116,7 @@ export default function Home() {
   );
 }
 
+// 스타일은 그대로
 const s = StyleSheet.create({
   container: {
     flexGrow: 1,

@@ -2,10 +2,14 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal 
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useState } from "react";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useFaqFeedback } from "../../src/features/faq/hooks";
 
 export default function FAQFeedbackScreen() {
   const [fontsLoaded] = useFonts({ Jua_400Regular });
-
+  const router = useRouter();
+  const { faqId } = useLocalSearchParams();
+  
   const [feedback, setFeedback] = useState("");
   const [reasonPressed, setReasonPressed] = useState(false);
   const [selectedReason, setSelectedReason] = useState("");
@@ -13,10 +17,11 @@ export default function FAQFeedbackScreen() {
   const [showSuccess, setShowSuccess] = useState(false);
   
   const reasons = ["오류 신고", "내용 개선 요청", "기능 개선 요청", "기타"];
+  const feedbackMutation = useFaqFeedback();
 
   if (!fontsLoaded) return null;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedReason) {
       alert('사유를 선택해주세요.');
       return;
@@ -25,7 +30,17 @@ export default function FAQFeedbackScreen() {
       alert('상세 내용을 입력해주세요.');
       return;
     }
-    setShowSuccess(true);
+    
+    try {
+      await feedbackMutation.mutateAsync({
+        userId: "temp-user-id", // 실제 사용자 ID로 교체 필요
+        content: `[사유: ${selectedReason}] ${feedback}`,
+        category: selectedReason
+      });
+      setShowSuccess(true);
+    } catch (error) {
+      alert('피드백 제출에 실패했습니다.');
+    }
   };
 
   if (showSuccess) {
@@ -35,7 +50,10 @@ export default function FAQFeedbackScreen() {
           피드백이 제출되었습니다.{"\n"}
           소중한 의견 감사합니다!
         </Text>
-        <TouchableOpacity style={styles.successButton}>
+        <TouchableOpacity 
+          style={styles.successButton}
+          onPress={() => router.back()}
+        >
           <Text style={styles.successButtonText}>FAQ로 돌아가기</Text>
         </TouchableOpacity>
       </View>
@@ -50,7 +68,10 @@ export default function FAQFeedbackScreen() {
     >
       {/* 헤더 */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
           <Ionicons name="chevron-back" size={32} color="#111827" />
         </TouchableOpacity>
         <View style={styles.placeholder} />

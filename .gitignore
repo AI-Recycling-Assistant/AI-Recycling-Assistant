@@ -1,4 +1,12 @@
-node_modules
+node_modules/
+.expo/
+dist/
+build/
+.env
+.DS_Store
+.gradle/
+.idea/
+
 # Python 가상환경
 .venv/
 inference/.venv/
