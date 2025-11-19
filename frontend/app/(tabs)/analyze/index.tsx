@@ -1,6 +1,13 @@
 // app/(tabs)/analyze/index.tsx
 import { useCallback, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,9 +17,12 @@ export default function AnalyzeEntry() {
   const [busy, setBusy] = useState(false);
 
   /** editor로 안전하게 이동 (객체 라우팅) */
-  const goEditor = useCallback((uri: string) => {
-    router.push({ pathname: "/analyze/editor", params: { uri } });
-  }, [router]);
+  const goEditor = useCallback(
+    (uri: string) => {
+      router.push({ pathname: "/analyze/editor", params: { uri } });
+    },
+    [router]
+  );
 
   /** 권한 헬퍼 */
   const ensureCameraPerm = useCallback(async () => {
@@ -84,11 +94,27 @@ export default function AnalyzeEntry() {
 
   return (
     <View style={styles.container}>
+      {/* 🔹 커스텀 헤더 (커뮤니티 헤더 스타일 비슷하게) */}
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#111827" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>AI 사진 분석</Text>
+        {/* 오른쪽 공간 맞추기용 */}
+        <View style={{ width: 24 }} />
+      </View>
+
+      {/* 메인 내용 */}
       <View style={styles.centerWrap}>
         <View style={styles.titleWrap}>
           <Text style={styles.brand}>분리배출</Text>
           <Text style={styles.mainTitle}>AI 사진 분석</Text>
-          <Text style={styles.subtitle}>"사진으로 분리배출 방법 알아보기"</Text>
+          <Text style={styles.subtitle}>
+            "사진으로 분리배출 방법 알아보기"
+          </Text>
         </View>
 
         <View style={{ height: 20 }} />
@@ -99,7 +125,12 @@ export default function AnalyzeEntry() {
           disabled={busy}
           activeOpacity={0.85}
         >
-          <Ionicons name="camera-outline" size={22} color="#0b2b17" style={styles.iconLeft} />
+          <Ionicons
+            name="camera-outline"
+            size={22}
+            color="#0b2b17"
+            style={styles.iconLeft}
+          />
           <Text style={styles.btnText}>촬영</Text>
         </TouchableOpacity>
 
@@ -109,7 +140,12 @@ export default function AnalyzeEntry() {
           disabled={busy}
           activeOpacity={0.85}
         >
-          <Ionicons name="image-outline" size={22} color="#3a2a00" style={styles.iconLeft} />
+          <Ionicons
+            name="image-outline"
+            size={22}
+            color="#3a2a00"
+            style={styles.iconLeft}
+          />
           <Text style={styles.btnText}>갤러리</Text>
         </TouchableOpacity>
 
@@ -127,8 +163,34 @@ const COLORS = {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FFFFFF", paddingHorizontal: 20 },
-  centerWrap: { flex: 1, justifyContent: "center", alignItems: "center" },
+  container: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+  },
+
+  /* 🔹 커스텀 헤더 스타일 */
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  backButton: { padding: 4 },
+  headerTitle: {
+    fontSize: 18,
+    fontFamily: "Jua_400Regular",
+    color: "#111827",
+  },
+
+  centerWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
   titleWrap: { alignItems: "center", gap: 6, marginBottom: 8 },
 
   brand: {
