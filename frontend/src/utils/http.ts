@@ -5,22 +5,36 @@ const BASE_URL =
 type HttpOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   headers?: Record<string, string>;
-  body?: any;
+  body?: any;                 // JSON 또는 FormData
   authToken?: string | null;
+  signal?: AbortSignal;
 };
 
 export async function http<T = any>(path: string, opts: HttpOptions = {}): Promise<T> {
   const url = `${BASE_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+
+  // 기본 헤더
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(opts.headers || {}),
   };
   if (opts.authToken) headers.Authorization = `Bearer ${opts.authToken}`;
 
+  // body 타입에 따라 Content-Type 설정
+  const isFormData = typeof FormData !== "undefined" && opts.body instanceof FormData;
+  if (!isFormData) {
+    // JSON 요청만 Content-Type 지정
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+  }
+
   const res = await fetch(url, {
     method: opts.method || "GET",
     headers,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    body: opts.body
+      ? isFormData
+        ? opts.body // FormData는 그대로
+        : JSON.stringify(opts.body)
+      : undefined,
+    signal: opts.signal,
   });
 
   const text = await res.text();

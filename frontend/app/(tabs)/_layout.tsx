@@ -2,7 +2,7 @@
 console.log("[TabsLayout] loaded");
 import { Tabs } from "expo-router";
 import HeaderLogo from "@components/HeaderLogo";
-
+// 수정
 export default function TabsLayout() {
   return (
     <Tabs
@@ -34,9 +34,9 @@ export default function TabsLayout() {
       />
 
       {/* 나머지는 헤더/탭바 없음 */}
-      <Tabs.Screen name="faq" options={{}} />
-      <Tabs.Screen name="analyze" options={{}} />
-      <Tabs.Screen name="community" options={{}} />
+      <Tabs.Screen name="faq" options={{ headerShown: false}} />
+      <Tabs.Screen name="analyze" options={{headerShown: false}} />
+      <Tabs.Screen name="community" options={{headerShown: false}} />
     </Tabs>
   );
 }

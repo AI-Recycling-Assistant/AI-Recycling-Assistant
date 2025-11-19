@@ -5,16 +5,19 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import HeaderLogo from '@components/HeaderLogo';
+
+const queryClient = new QueryClient();
 
 export {
   ErrorBoundary,
 } from 'expo-router';
 
+// 처음에 탭(홈)을 보여주고 싶으면 이렇게
 export const unstable_settings = {
-  initialRouteName: '(tabs)/index',
+  initialRouteName: '(tabs)',   // 'index' 말고 '(tabs)'
 };
 
 SplashScreen.preventAutoHideAsync();
@@ -37,7 +40,11 @@ export default function RootLayout() {
 
   if (!loaded) return null;
 
-  return <RootLayoutNav />;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <RootLayoutNav />
+    </QueryClientProvider>
+  );
 }
 
 function RootLayoutNav() {
@@ -45,20 +52,10 @@ function RootLayoutNav() {
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        {/* ✅ 홈(index)만 헤더 표시 + 가운데 로고 */}
-        <Stack.Screen
-          name="(tabs)/index"
-          options={{
-            headerShown: true,
-            headerTitleAlign: 'center',
-            headerTitle: () => <HeaderLogo  height={28} />,
-          }}
-          
-        />
-        {/* 탭 그룹(내부 화면)은 헤더 숨김 */}
+      <Stack initialRouteName="(tabs)">
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="community" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>
