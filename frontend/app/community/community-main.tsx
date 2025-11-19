@@ -11,10 +11,10 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { router } from "expo-router";
 import { useAuth } from "@store/auth";  // ✅ 로그인 정보 사용
-
+import { useFocusEffect } from "@react-navigation/native";
 // ===== 타입 =====
 type CommunityPost = {
   id: string;
@@ -82,7 +82,12 @@ export default function CommunityMainScreen() {
     loadPosts(true).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serverCategory, currentUserId]);
-
+  useFocusEffect(
+      useCallback(() => {
+        // 뒤로가기 등으로 이 화면이 다시 보일 때
+        loadPosts(true).catch(() => {});
+      }, [serverCategory, currentUserId])
+    );
   if (!fontsLoaded) return null;
 
   // ===== 목록 호출 (Spring Page) =====
@@ -245,8 +250,13 @@ export default function CommunityMainScreen() {
   };
 
   const goBack = () => {
-    router.back();
+    if ((router as any).canGoBack?.()) {
+      router.back();
+    } else {
+      router.replace("/community");  // ✅ 여기를 너가 쓰는 메인 화면 경로로 바꿔
+    }
   };
+
 
   // ✅ 현재 로그인 유저의 글인지 체크
   const isMyPost = (post: CommunityPost) =>
