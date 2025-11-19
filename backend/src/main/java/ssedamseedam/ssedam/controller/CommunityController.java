@@ -26,9 +26,18 @@ public class CommunityController {
     public Page<PostSummaryResponse> getPosts(
             @RequestParam(required = false) PostCategory category,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) Long userId
     ) {
-        return communityService.getPosts(category, page, size);
+        return communityService.getPosts(category, page, size, userId);
+    }
+
+    @DeleteMapping("/posts/{postId}")
+    public void deletePost(
+            @PathVariable Long postId,
+            @RequestParam Long userId
+    ) {
+        communityService.deletePost(postId, userId);
     }
 
     /**

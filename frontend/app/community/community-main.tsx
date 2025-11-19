@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   ActivityIndicator,
   Alert,
   Platform,
@@ -14,11 +13,13 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useEffect, useMemo, useState } from "react";
 import { router } from "expo-router";
+import { useAuth } from "@store/auth";  // ✅ 로그인 정보 사용
 
 // ===== 타입 =====
 type CommunityPost = {
   id: string;
-  username?: string;
+  authorId?: number | null;       // ✅ 글쓴이 userId
+  username?: string;              // 닉네임
   avatar?: string;
   timeAgo?: string;
   title: string;
@@ -28,6 +29,7 @@ type CommunityPost = {
   likes?: number;
   comments?: number;
   liked?: boolean;
+  mine?: boolean;
 };
 
 type CategoryTab = "전체" | "질문" | "팁";
@@ -47,7 +49,6 @@ type SpringPage<T> = {
 const BASE_URL =
   Platform.OS === "android" ? "http://10.0.2.2:8080" : "http://localhost:8080";
 const API = `${BASE_URL}/api/community`;
-const USER_ID = 1;
 
 // 탭 → 서버 카테고리 매핑
 function mapTabToServerCategory(cat: CategoryTab): "QUESTION" | "TIP" | "" {
@@ -58,6 +59,8 @@ function mapTabToServerCategory(cat: CategoryTab): "QUESTION" | "TIP" | "" {
 
 export default function CommunityMainScreen() {
   const [fontsLoaded] = useFonts({ Jua_400Regular });
+  const { userId } = useAuth();               // ✅ 현재 로그인한 유저
+  const currentUserId = userId ?? null;
 
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [activeCategory, setActiveCategory] = useState<CategoryTab>("전체");
@@ -78,7 +81,7 @@ export default function CommunityMainScreen() {
   useEffect(() => {
     loadPosts(true).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverCategory]);
+  }, [serverCategory, currentUserId]);
 
   if (!fontsLoaded) return null;
 
@@ -93,7 +96,10 @@ export default function CommunityMainScreen() {
       params.append("page", String(nextPage));
       params.append("size", String(size));
       if (serverCategory) params.append("category", serverCategory);
-      params.append("userId", String(USER_ID));
+      if (currentUserId != null) {
+        params.append("userId", String(currentUserId));  // ✅ 로그인 유저 전달
+      }
+
       const res = await fetch(`${API}/posts?${params.toString()}`);
       if (!res.ok) {
         throw new Error(`목록 조회 실패: ${res.status}`);
@@ -110,12 +116,14 @@ export default function CommunityMainScreen() {
         category: p.category as "TIP" | "QUESTION",
         comments: p.commentCount ?? 0,
         likes: p.likeCount ?? 0,
-        liked: !!p.liked,
-        // 백엔드에서 writer(닉네임) 내려준다고 가정
+        liked: !!p.liked,                         // ✅ 서버에서 온 liked 사용
         username: p.writer ?? "익명",
         avatar: "🙂",
         timeAgo: p.timeAgo ?? "",
         hasPhoto: !!p.hasPhoto,
+        authorId:
+          typeof p.authorId === "number" ? p.authorId : null, // ✅ 글쓴이 id
+        mine: !!p.mine,
       }));
 
       if (reset) {
@@ -145,6 +153,12 @@ export default function CommunityMainScreen() {
 
   // ===== 좋아요 =====
   async function toggleLike(postId: string) {
+    if (!currentUserId) {
+      Alert.alert("안내", "로그인 후 이용해주세요.");
+      return;
+    }
+
+    // 낙관적 업데이트
     setPosts((prev) =>
       prev.map((p) =>
         p.id === postId
@@ -159,7 +173,7 @@ export default function CommunityMainScreen() {
 
     try {
       const res = await fetch(
-        `${API}/posts/${postId}/like?userId=${USER_ID}`,
+        `${API}/posts/${postId}/like?userId=${currentUserId}`,
         { method: "POST" }
       );
       if (!res.ok) {
@@ -182,34 +196,48 @@ export default function CommunityMainScreen() {
     }
   }
 
-  // ===== 신고 =====
-  async function reportPost(postId: string) {
+  // ===== 게시글 삭제 (내 글일 때만) =====
+  // ===== 게시글 삭제 (내 글일 때만) =====
+  async function handleDelete(postId: string) {
+    if (!currentUserId) {
+      Alert.alert("안내", "로그인 후 이용해주세요.");
+      return;
+    }
+
     try {
-      setActiveMenu(null);
       const res = await fetch(
-        `${API}/posts/${postId}/report?userId=${USER_ID}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ reason: "부적절한 내용" }),
-        }
+        `${API}/posts/${postId}?userId=${currentUserId}`,
+        { method: "DELETE" }
       );
+
       if (!res.ok) {
-        throw new Error(`신고 실패: ${res.status}`);
+        throw new Error(`삭제 실패: ${res.status}`);
       }
-      Alert.alert("신고 완료", "신고가 접수되었습니다.");
+
+      // 1) 화면 목록에서 해당 게시글 제거
+      setPosts((prev) => prev.filter((p) => p.id !== postId));
+      setActiveMenu(null);
+
+      // 2) 삭제 완료 안내 + 확인 누르면 community-main으로 이동
+      Alert.alert("알림", "게시글이 삭제되었습니다.", [
+        {
+          text: "확인",
+          onPress: () => {
+            router.replace("/community/community-main");
+          },
+        },
+      ]);
     } catch (e: any) {
-      Alert.alert("오류", e?.message ?? "신고 중 오류가 발생했습니다.");
+      Alert.alert(
+        "오류",
+        e?.message ?? "게시글 삭제 중 오류가 발생했습니다."
+      );
     }
   }
 
+
   const toggleMenu = (postId: string) =>
     setActiveMenu(activeMenu === postId ? null : postId);
-
-  const hidePost = (postId: string) => {
-    setPosts((prev) => prev.filter((p) => p.id !== postId));
-    setActiveMenu(null);
-  };
 
   const onChangeTab = (tab: CategoryTab) => {
     setActiveCategory(tab);
@@ -220,146 +248,239 @@ export default function CommunityMainScreen() {
     router.back();
   };
 
+  // ✅ 현재 로그인 유저의 글인지 체크
+  const isMyPost = (post: CommunityPost) =>
+    currentUserId != null &&
+    post.authorId != null &&
+    post.authorId === currentUserId;
+
   return (
     <View style={styles.screen}>
-      <TouchableWithoutFeedback onPress={() => setActiveMenu(null)}>
-        <ScrollView
-          style={styles.container}
-          contentContainerStyle={styles.content}
-        >
-          {/* 상단 내비 헤더 (feed와 비슷한 형태) */}
-          <View style={styles.topBar}>
-            <TouchableOpacity style={styles.backButton} onPress={goBack}>
-              <Ionicons name="arrow-back" size={24} color="#111827" />
-            </TouchableOpacity>
-            <Text style={styles.topBarTitle}>커뮤니티</Text>
-            <View style={{ width: 24 }} />
-          </View>
+      {/* 🔥 TouchableWithoutFeedback 제거하고 그냥 ScrollView만 사용 */}
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTouches="handled"
+      >
+        {/* 상단 내비 헤더 */}
+        <View style={styles.topBar}>
+          <TouchableOpacity style={styles.backButton} onPress={goBack}>
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </TouchableOpacity>
+          <Text style={styles.topBarTitle}>커뮤니티</Text>
+          <View style={{ width: 24 }} />
+        </View>
 
-          {/* 기존 헤더 카드 */}
-          <View style={styles.header}>
-            <Text style={styles.brand}>함께하는</Text>
-            <Text style={styles.title}>쓰담이들 커뮤니티</Text>
-            <Text style={styles.subtitle}>
-              "분리배출 경험을 나누고 소통해요"
+        {/* 헤더 카드 */}
+        <View style={styles.header}>
+          <Text style={styles.brand}>함께하는</Text>
+          <Text style={styles.title}>쓰담이들 커뮤니티</Text>
+          <Text style={styles.subtitle}>
+            "분리배출 경험을 나누고 소통해요"
+          </Text>
+        </View>
+
+        {/* 카테고리 탭 */}
+        <View style={styles.categoryTabs}>
+          <TouchableOpacity
+            style={[styles.tab, activeCategory === "전체" && styles.activeTab]}
+            onPress={() => onChangeTab("전체")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeCategory === "전체" && styles.activeTabText,
+              ]}
+            >
+              전체
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeCategory === "질문" && styles.activeTab]}
+            onPress={() => onChangeTab("질문")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeCategory === "질문" && styles.activeTabText,
+              ]}
+            >
+              질문
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeCategory === "팁" && styles.activeTab]}
+            onPress={() => onChangeTab("팁")}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeCategory === "팁" && styles.activeTabText,
+              ]}
+            >
+              팁
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 오류 메시지 */}
+        {errorText && (
+          <View style={{ paddingVertical: 8 }}>
+            <Text style={{ color: "#EF4444", fontFamily: "Jua_400Regular" }}>
+              {errorText}
             </Text>
           </View>
+        )}
 
-          {/* 카테고리 탭 */}
-          <View style={styles.categoryTabs}>
-            <TouchableOpacity
-              style={[styles.tab, activeCategory === "전체" && styles.activeTab]}
-              onPress={() => onChangeTab("전체")}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeCategory === "전체" && styles.activeTabText,
-                ]}
-              >
-                전체
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, activeCategory === "질문" && styles.activeTab]}
-              onPress={() => onChangeTab("질문")}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeCategory === "질문" && styles.activeTabText,
-                ]}
-              >
-                질문
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, activeCategory === "팁" && styles.activeTab]}
-              onPress={() => onChangeTab("팁")}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeCategory === "팁" && styles.activeTabText,
-                ]}
-              >
-                팁
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* 오류 메시지 */}
-          {errorText && (
-            <View style={{ paddingVertical: 8 }}>
-              <Text style={{ color: "#EF4444", fontFamily: "Jua_400Regular" }}>
-                {errorText}
+        {/* 게시글 목록 */}
+        <View style={styles.postsContainer}>
+          {loading && posts.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <ActivityIndicator />
+            </View>
+          ) : posts.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>
+                아직 등록된 게시물이 없습니다
               </Text>
             </View>
-          )}
-
-          {/* 게시글 목록 */}
-          <View style={styles.postsContainer}>
-            {loading && posts.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <ActivityIndicator />
-              </View>
-            ) : posts.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>
-                  아직 등록된 게시물이 없습니다
-                </Text>
-              </View>
-            ) : (
-              posts.map((post) => (
-                <View key={post.id} style={styles.postCard}>
-                  {/* 사용자 정보 */}
-                  <View style={styles.postHeader}>
-                    <View style={styles.userInfo}>
-                      <Text style={styles.avatar}>{post.avatar ?? "🙂"}</Text>
-                      <View style={styles.userDetails}>
-                        <Text style={styles.username}>
-                          {post.username ?? "익명"}
-                        </Text>
-                        <Text style={styles.timeAgo}>
-                          {post.timeAgo ?? ""}
-                        </Text>
-                      </View>
+          ) : (
+            posts.map((post) => (
+              <View key={post.id} style={styles.postCard}>
+                {/* 사용자 정보 */}
+                <View style={styles.postHeader}>
+                  <View style={styles.userInfo}>
+                    <Text style={styles.avatar}>{post.avatar ?? "🙂"}</Text>
+                    <View style={styles.userDetails}>
+                      <Text style={styles.username}>
+                        {post.username ?? "익명"}
+                      </Text>
+                      <Text style={styles.timeAgo}>
+                        {post.timeAgo ?? ""}
+                      </Text>
                     </View>
-                    <View style={styles.menuContainer}>
-                      <TouchableOpacity onPress={() => toggleMenu(post.id)}>
-                        <Ionicons
-                          name="ellipsis-horizontal"
-                          size={20}
-                          color="#6B7280"
-                        />
-                      </TouchableOpacity>
-                      {activeMenu === post.id && (
-                        <View style={styles.dropdownMenu}>
+                  </View>
+                  <View style={styles.menuContainer}>
+                    <TouchableOpacity onPress={() => toggleMenu(post.id)}>
+                      <Ionicons
+                        name="ellipsis-horizontal"
+                        size={20}
+                        color="#6B7280"
+                      />
+                    </TouchableOpacity>
+                    {activeMenu === post.id && (
+                      <View style={styles.dropdownMenu}>
+                        {isMyPost(post) ? (
+                          // ✅ 내 글 → 게시글 삭제하기
                           <TouchableOpacity
                             style={[styles.menuItem, styles.dangerItem]}
-                            onPress={() => reportPost(post.id)}
+                            onPress={() => handleDelete(post.id)}
                           >
                             <Text
-                              style={[styles.menuItemText, styles.dangerText]}
+                              style={[
+                                styles.menuItemText,
+                                styles.dangerText,
+                              ]}
+                            >
+                              게시글 삭제하기
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          // ✅ 남의 글 → 신고하기 (report 화면으로 이동)
+                          <TouchableOpacity
+                            style={[styles.menuItem, styles.dangerItem]}
+                            onPress={() => {
+                              setActiveMenu(null);
+                              router.push({
+                                pathname: "/community/community-report",
+                                params: { postId: post.id },
+                              });
+                            }}
+                          >
+                            <Text
+                              style={[
+                                styles.menuItemText,
+                                styles.dangerText,
+                              ]}
                             >
                               신고하기
                             </Text>
                           </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.menuItem}
-                            onPress={() => hidePost(post.id)}
-                          >
-                            <Text style={styles.menuItemText}>
-                              게시글 숨기기
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      )}
-                    </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                {/* 제목 → 상세 페이지 이동 */}
+                <TouchableOpacity
+                  onPress={() =>
+                    router.push({
+                      pathname: "/community/community-feed",
+                      params: { postId: post.id },
+                    })
+                  }
+                >
+                  <Text style={styles.postTitle}>{post.title}</Text>
+                </TouchableOpacity>
+
+                {/* 메타 (카테고리 / 사진 여부) */}
+                <View style={styles.postMeta}>
+                  <View
+                    style={[
+                      styles.categoryTag,
+                      post.category === "QUESTION"
+                        ? styles.categoryTagQuestion
+                        : styles.categoryTagTip,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryTagText,
+                        post.category === "QUESTION"
+                          ? styles.categoryTagTextQuestion
+                          : styles.categoryTagTextTip,
+                      ]}
+                    >
+                      {post.category === "QUESTION" ? "질문" : "팁"}
+                    </Text>
                   </View>
 
-                  {/* 제목 → 상세 페이지 이동 */}
+                  {post.hasPhoto && (
+                    <View style={styles.photoIndicator}>
+                      <Ionicons
+                        name="image-outline"
+                        size={14}
+                        color="#6B7280"
+                      />
+                      <Text style={styles.photoIndicatorText}>사진 첨부</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* 액션 */}
+                <View style={styles.postActions}>
                   <TouchableOpacity
+                    style={styles.actionButton}
+                    onPress={() => toggleLike(post.id)}
+                  >
+                    <Ionicons
+                      name={post.liked ? "heart" : "heart-outline"}
+                      size={20}
+                      color={post.liked ? "#EF4444" : "#6B7280"}
+                    />
+                    <Text
+                      style={[
+                        styles.actionText,
+                        post.liked && styles.likedText,
+                      ]}
+                    >
+                      {post.likes ?? 0}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.actionButton}
                     onPress={() =>
                       router.push({
                         pathname: "/community/community-feed",
@@ -367,116 +488,48 @@ export default function CommunityMainScreen() {
                       })
                     }
                   >
-                    <Text style={styles.postTitle}>{post.title}</Text>
+                    <Ionicons
+                      name="chatbubble-outline"
+                      size={20}
+                      color="#6B7280"
+                    />
+                    <Text style={styles.actionText}>
+                      {post.comments ?? 0}
+                    </Text>
                   </TouchableOpacity>
-
-                  {/* 메타 (내용 미리보기 제거하고 카테고리/사진만) */}
-                  <View style={styles.postMeta}>
-                    <View
-                      style={[
-                        styles.categoryTag,
-                        post.category === "QUESTION"
-                          ? styles.categoryTagQuestion
-                          : styles.categoryTagTip,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.categoryTagText,
-                          post.category === "QUESTION"
-                            ? styles.categoryTagTextQuestion
-                            : styles.categoryTagTextTip,
-                        ]}
-                      >
-                        {post.category === "QUESTION" ? "질문" : "팁"}
-                      </Text>
-                    </View>
-
-                    {post.hasPhoto && (
-                      <View style={styles.photoIndicator}>
-                        <Ionicons
-                          name="image-outline"
-                          size={14}
-                          color="#6B7280"
-                        />
-                        <Text style={styles.photoIndicatorText}>사진 첨부</Text>
-                      </View>
-                    )}
-                  </View>
-
-                  {/* 액션 */}
-                  <View style={styles.postActions}>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => toggleLike(post.id)}
-                    >
-                      <Ionicons
-                        name={post.liked ? "heart" : "heart-outline"}
-                        size={20}
-                        color={post.liked ? "#EF4444" : "#6B7280"}
-                      />
-                      <Text
-                        style={[
-                          styles.actionText,
-                          post.liked && styles.likedText,
-                        ]}
-                      >
-                        {post.likes ?? 0}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() =>
-                        router.push({
-                          pathname: "/community/community-feed",
-                          params: { postId: post.id },
-                        })
-                      }
-                    >
-                      <Ionicons
-                        name="chatbubble-outline"
-                        size={20}
-                        color="#6B7280"
-                      />
-                      <Text style={styles.actionText}>
-                        {post.comments ?? 0}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
                 </View>
-              ))
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* 더 보기 */}
+        {hasMore && (
+          <View style={{ alignItems: "center", paddingVertical: 16 }}>
+            {loading ? (
+              <ActivityIndicator />
+            ) : (
+              <TouchableOpacity
+                style={{
+                  paddingHorizontal: 16,
+                  paddingVertical: 10,
+                  backgroundColor: "#1AA179",
+                  borderRadius: 8,
+                }}
+                onPress={() => loadPosts(false)}
+              >
+                <Text
+                  style={{ color: "#fff", fontFamily: "Jua_400Regular" }}
+                >
+                  더 보기
+                </Text>
+              </TouchableOpacity>
             )}
           </View>
+        )}
+      </ScrollView>
 
-          {/* 더 보기 */}
-          {hasMore && (
-            <View style={{ alignItems: "center", paddingVertical: 16 }}>
-              {loading ? (
-                <ActivityIndicator />
-              ) : (
-                <TouchableOpacity
-                  style={{
-                    paddingHorizontal: 16,
-                    paddingVertical: 10,
-                    backgroundColor: "#1AA179",
-                    borderRadius: 8,
-                  }}
-                  onPress={() => loadPosts(false)}
-                >
-                  <Text
-                    style={{ color: "#fff", fontFamily: "Jua_400Regular" }}
-                  >
-                    더 보기
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </ScrollView>
-      </TouchableWithoutFeedback>
-
-      {/* ✅ 화면 우측 하단에 항상 떠있는 플로팅 버튼 */}
+      {/* 플로팅 버튼 (우측 하단 고정) */}
       <TouchableOpacity
         style={styles.floatingButton}
         onPress={() => router.push("/community/community-upload")}
@@ -487,13 +540,12 @@ export default function CommunityMainScreen() {
   );
 }
 
-// 스타일
+// 스타일은 그대로
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#F9FAFB" }, // 루트
+  screen: { flex: 1, backgroundColor: "#F9FAFB" },
   container: { flex: 1 },
   content: { paddingHorizontal: 20, paddingVertical: 24, paddingBottom: 100 },
-
-  // 상단 내비 헤더
+  // ... 나머지 스타일은 기존 그대로 ...
   topBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -508,7 +560,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: "#111827",
   },
-
   header: {
     alignItems: "center",
     marginBottom: 24,
@@ -540,7 +591,6 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     marginTop: 6,
   },
-
   categoryTabs: {
     flexDirection: "row",
     backgroundColor: "#FFFFFF",
@@ -557,7 +607,6 @@ const styles = StyleSheet.create({
   activeTab: { backgroundColor: "#1AA179" },
   tabText: { fontFamily: "Jua_400Regular", fontSize: 14, color: "#6B7280" },
   activeTabText: { color: "#FFFFFF" },
-
   postsContainer: { gap: 16 },
   postCard: {
     backgroundColor: "#FFFFFF",
@@ -593,7 +642,6 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     lineHeight: 20,
   },
-
   postMeta: {
     flexDirection: "row",
     alignItems: "center",
@@ -611,14 +659,12 @@ const styles = StyleSheet.create({
   categoryTagText: { fontSize: 12, fontFamily: "Jua_400Regular" },
   categoryTagTextQuestion: { color: "#3B82F6" },
   categoryTagTextTip: { color: "#16A34A" },
-
   photoIndicator: { flexDirection: "row", alignItems: "center", gap: 4 },
   photoIndicatorText: {
     fontSize: 12,
     color: "#6B7280",
     fontFamily: "Jua_400Regular",
   },
-
   postActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -634,7 +680,6 @@ const styles = StyleSheet.create({
     fontFamily: "Jua_400Regular",
   },
   likedText: { color: "#EF4444" },
-
   floatingButton: {
     position: "absolute",
     bottom: 30,
@@ -651,7 +696,6 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-
   menuContainer: { position: "relative" },
   dropdownMenu: {
     position: "absolute",
@@ -680,7 +724,6 @@ const styles = StyleSheet.create({
   },
   dangerItem: { borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
   dangerText: { color: "#EF4444" },
-
   emptyContainer: {
     alignItems: "center",
     justifyContent: "center",

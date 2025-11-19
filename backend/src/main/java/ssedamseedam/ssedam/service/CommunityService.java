@@ -3,6 +3,7 @@ package ssedamseedam.ssedam.service;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;   // ✅ 추가
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ssedamseedam.ssedam.domain.*;
@@ -29,25 +30,54 @@ public class CommunityService {
      * 게시글 목록
      */
     @Transactional(readOnly = true)
-    public Page<PostSummaryResponse> getPosts(PostCategory category, int page, int size) {
-        PageRequest pr = PageRequest.of(page, size);
+    public Page<PostSummaryResponse> getPosts(PostCategory category,
+                                              int page,
+                                              int size,
+                                              Long currentUserId) {
+
+        // ✅ createdAt 기준 내림차순 정렬(최신글 먼저)
+        PageRequest pr = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
 
         Page<Post> posts;
-        if (category == null) { // 전체
+        if (category == null) {
             posts = postRepository.findByStatus(PostStatus.PUBLISHED, pr);
         } else {
             posts = postRepository.findByCategoryAndStatus(category, PostStatus.PUBLISHED, pr);
         }
 
-        return posts.map(p -> PostSummaryResponse.builder()
-                .id(p.getId())
-                .category(p.getCategory().name())
-                .title(p.getTitle())
-                .writer(p.getAuthor() != null ? p.getAuthor().getNickname() : "익명")
-                .likeCount(p.getLikeCount())
-                .commentCount(p.getCommentCount())
-                .createdAt(p.getCreatedAt())
-                .build());
+        return posts.map(p -> {
+            Long authorId = (p.getAuthor() != null ? p.getAuthor().getId() : null);
+
+            boolean liked = false;
+            if (currentUserId != null) {
+                liked = postLikeRepository
+                        .findByPostIdAndUserId(p.getId(), currentUserId)
+                        .isPresent();
+            }
+
+            boolean mine = currentUserId != null
+                    && authorId != null
+                    && authorId.equals(currentUserId);
+
+            return PostSummaryResponse.builder()
+                    .id(p.getId())
+                    .category(p.getCategory().name())
+                    .title(p.getTitle())
+                    .writer(p.getAuthor() != null ? p.getAuthor().getNickname() : "익명")
+                    .likeCount(p.getLikeCount())
+                    .commentCount(p.getCommentCount())
+                    .createdAt(p.getCreatedAt())
+                    .content(p.getContent())
+                    .hasPhoto(!p.getImages().isEmpty())
+                    .authorId(authorId)
+                    .liked(liked)
+                    .mine(mine)
+                    .build();
+        });
     }
 
     /**
@@ -226,6 +256,27 @@ public class CommunityService {
 
         comment.setLikeCount(comment.getLikeCount() + 1);
     }
+
+    // 신고 메서드 위쪽 아무 데나 추가
+    // 신고 메서드 위쪽 아무 데나 추가되어 있던 메서드 교체
+    public void deletePost(Long postId, Long userId) {
+        Post post = postRepository.findById(postId)
+                .orElseThrow(() -> new IllegalArgumentException("게시글이 없습니다."));
+
+        // 내가 쓴 글인지 검증
+        if (post.getAuthor() == null || !post.getAuthor().getId().equals(userId)) {
+            throw new IllegalStateException("본인 글만 삭제할 수 있습니다.");
+        }
+
+        // ✅ 물리 삭제 대신 "소프트 삭제" 처리
+        //    - 상태를 PUBLISHED가 아닌 값으로 바꿔서 목록에서 안 보이게 함
+        post.setStatus(PostStatus.DRAFT);  // 또는 DELETED 같은 상태가 있으면 그걸 사용
+
+        // (선택) 내용 가리기
+        post.setTitle("(삭제된 게시글입니다)");
+        post.setContent("");
+    }
+
 
     /**
      * 게시글 신고
