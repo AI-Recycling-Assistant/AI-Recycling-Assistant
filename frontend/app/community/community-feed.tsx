@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
@@ -44,6 +45,7 @@ type PostDetail = {
   category: "TIP" | "QUESTION";
   content: string;
   hasPhoto?: boolean;
+  images?: string[];
   likes?: number;
   liked?: boolean;
   comments?: number; // 총 댓글 수(백엔드가 내려주면 사용)
@@ -101,12 +103,16 @@ export default function CommunityFeedScreen(props: any) {
       if (!res.ok) throw new Error(`GET /posts/${postId} 실패: ${res.status}`);
       const data = await res.json();
 
+      // ✅ 백엔드에서 내려준 images 배열 안전하게 파싱
+      const images: string[] = Array.isArray(data.images) ? data.images : [];
+
       const mapped: PostDetail = {
         id: String(data.id),
         title: data.title,
         content: data.content,
         category: data.category, // "TIP" | "QUESTION"
-        hasPhoto: !!data.hasPhoto,
+        images,                                   // ✅ 이미지 배열
+        hasPhoto: images.length > 0 || !!data.hasPhoto, // ✅ 사진 여부
         username: data.username ?? data.writer ?? "익명",
         avatar: data.avatar ?? "🙂",
         timeAgo: data.timeAgo ?? "",
@@ -317,9 +323,22 @@ export default function CommunityFeedScreen(props: any) {
   };
 
   const goBack = () => {
-    if (props?.navigation?.goBack) props.navigation.goBack();
-    else router.back();
+    // 1) react-navigation 스택이 있고 뒤로 갈 수 있으면 거기로
+    if (props?.navigation?.canGoBack?.() && props.navigation.canGoBack()) {
+      props.navigation.goBack();
+      return;
+    }
+
+    // 2) expo-router 스택에 이전 화면이 있으면 back
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    // 3) 그래도 없으면 강제로 커뮤니티 메인으로
+    router.replace("/community/community-main");
   };
+
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -381,7 +400,24 @@ export default function CommunityFeedScreen(props: any) {
             <Text style={styles.postContent}>{post.content}</Text>
 
             {/* (선택) 첨부 이미지 표시 */}
-            {post.hasPhoto && (
+            {post.images && post.images.length > 0 && (
+              <ScrollView
+                style={styles.imageContainer}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+              >
+                {post.images.map((uri, idx) => (
+                  <Image
+                    key={`${uri}-${idx}`}
+                    source={{ uri }}
+                    style={styles.postImage}
+                  />
+                ))}
+              </ScrollView>
+            )}
+
+            {/* 혹시 images는 없는데 hasPhoto만 true인 경우 대비해서 기본 플레이스홀더 */}
+            {(!post.images || post.images.length === 0) && post.hasPhoto && (
               <View style={styles.imageContainer}>
                 <View style={styles.imagePlaceholder}>
                   <Ionicons name="image-outline" size={48} color="#9CA3AF" />
@@ -389,6 +425,7 @@ export default function CommunityFeedScreen(props: any) {
                 </View>
               </View>
             )}
+
 
             {/* 액션 버튼들 */}
             <View style={styles.postActions}>
@@ -611,6 +648,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+  },
+  postImage: {              // ✅ 추가
+    width: 260,
+    height: 200,
+    borderRadius: 12,
+    marginRight: 12,
+    backgroundColor: "#E5E7EB",
   },
   imageText: {
     fontSize: 14,
