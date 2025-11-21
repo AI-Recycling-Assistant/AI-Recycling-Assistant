@@ -1,171 +1,108 @@
 # inference/model.py
-from ultralytics import YOLO
-from paddleocr import PaddleOCR
 
 from fastapi import UploadFile
-from typing import List, Dict, Any
+from typing import Dict, Any
 import os
 import uuid
+import json
 
-# ==============================
-# 1) YOLOv8 / PaddleOCR 로드
-# ==============================
+from google import genai
+from google.genai import types
 
-# 학습된 가중치 파일 경로
-YOLO_WEIGHTS_PATH = "yolov8n.pt"  # 필요하면 custom weight 로 교체
+# 사용할 Gemini 모델 이름 (플래시 모델: 빠르고 저렴)
+GEMINI_MODEL = "gemini-2.0-flash"  # 필요하면 2.5나 다른 버전으로 변경 가능
 
-print("[MODEL] Loading YOLOv8 model...")
-yolo_model = YOLO(YOLO_WEIGHTS_PATH)
-
-print("[MODEL] Loading PaddleOCR model...")
-# lang 값은 프로젝트에 맞게 조정 (예: 'korean', 'en', 'korean+en' 등)
-ocr_model = PaddleOCR(use_angle_cls=True, lang="korean")
-
-print("[MODEL] Models loaded successfully.")
+# 클라이언트 생성 (GEMINI_API_KEY 환경변수 사용)
+client = genai.Client()  #  [oai_citation:2‡googleapis.github.io](https://googleapis.github.io/python-genai/?utm_source=chatgpt.com)
 
 
-# ==============================
-# 2) YOLO / OCR 개별 함수
-# ==============================
+SYSTEM_PROMPT = """
+당신은 한국의 분리배출 규정을 잘 아는 환경 전문가입니다.
+사용자가 올린 사진을 바탕으로 '이 물건을 어떻게 버려야 하는지'를 알려주세요.
 
-def run_yolo(image_path: str) -> List[Dict[str, Any]]:
-    """
-    YOLOv8으로 객체 탐지 수행
-    반환: [{label, confidence, box[x1,y1,x2,y2]}, ...]
-    """
-    results = yolo_model(image_path)[0]
+반드시 아래 JSON 형식으로만 응답하세요. 설명 문장이나 다른 말은 절대 쓰지 마세요.
 
-    detections: List[Dict[str, Any]] = []
-    for box in results.boxes:
-        cls_id = int(box.cls[0].item())
-        label = results.names[cls_id]
-        conf = float(box.conf[0].item())
-        x1, y1, x2, y2 = box.xyxy[0].tolist()
+{
+  "item_name": "사진 속 주요 물건 이름 (예: 생수병, 캔, 종이컵 등)",
+  "category": "재질/분류 (예: 플라스틱, 캔, 종이, 유리, 일반쓰레기, 음식물 등)",
+  "disposal_steps": [
+    "단계별 분리배출 방법을 한국어 문장으로",
+    "예: 내용물을 비우고 라벨을 제거한 뒤 플라스틱류로 배출합니다."
+  ],
+  "warnings": [
+    "주의사항이나 예외가 있으면 작성, 없으면 빈 배열 []"
+  ],
+  "short_summary": "사용자에게 한 줄로 보여줄 짧은 요약 설명"
+}
+"""
 
-        detections.append(
-            {
-                "label": label,
-                "confidence": conf,
-                "box": [x1, y1, x2, y2],
-            }
-        )
-
-    return detections
-
-
-def run_ocr(image_path: str) -> List[Dict[str, Any]]:
-    """
-    PaddleOCR로 텍스트 인식
-    반환: [{text, confidence, box}, ...]
-    - PaddleOCR 버전에 따라 result 포맷이 달라도 최대한 빈 리스트만 반환하도록 방어적으로 처리
-    """
-    texts: List[Dict[str, Any]] = []
-
-    try:
-        result = ocr_model.ocr(image_path)
-        print("[OCR RAW RESULT]", result)
-    except Exception as e:
-        print("[OCR ERROR] ocr_model.ocr() failed:", e)
-        return []
-
-    # ---- 1) 옛날 스타일: [[ [box, (text, conf)], ... ], ... ] ----
-    try:
-        for line in result:
-            for box, (text, conf) in line:
-                texts.append(
-                    {
-                        "text": text,
-                        "confidence": float(conf),
-                        "box": box,  # [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-                    }
-                )
-        return texts
-    except Exception as e:
-        print("[OCR PARSE WARNING] old-style parse failed:", e)
-
-    # ---- 2) 새 스타일(딕셔너리 리스트) 가정: [{dt_polys, rec_text, rec_score}, ...] ----
-    try:
-        for item in result:
-            if isinstance(item, dict):
-                polys = item.get("dt_polys", [])
-                rec_texts = item.get("rec_text", [])
-                rec_scores = item.get("rec_score", [])
-                for poly, text, conf in zip(polys, rec_texts, rec_scores):
-                    texts.append(
-                        {
-                            "text": text,
-                            "confidence": float(conf),
-                            "box": poly,
-                        }
-                    )
-        return texts
-    except Exception as e:
-        print("[OCR PARSE ERROR] dict-style parse failed:", e)
-        return []
-
-
-# ==============================
-# 3) 최종 라벨 결정 로직
-# ==============================
-
-def decide_final_label(
-    yolo_detections: List[Dict[str, Any]],
-    ocr_results: List[Dict[str, Any]],
-) -> str:
-    """
-    YOLO + OCR 결과를 바탕으로 최종 분리 라벨을 결정.
-    - 일단은 가장 confidence 높은 YOLO 라벨을 그대로 사용.
-    - 나중에 필요하면 여기서 라벨 매핑 / OCR 기반 보정 로직만 수정하면 됨.
-    """
-    if not yolo_detections:
-        return "unknown"
-
-    # 신뢰도가 가장 높은 박스 하나 선택
-    best = sorted(
-        yolo_detections, key=lambda d: d.get("confidence", 0.0), reverse=True
-    )[0]
-    return best["label"]
-
-
-# ==============================
-# 4) FastAPI에서 직접 호출하는 엔트리 포인트
-# ==============================
 
 async def analyze_image(image: UploadFile) -> Dict[str, Any]:
     """
-    FastAPI /analyze-image 엔드포인트에서 바로 사용하는 함수.
-
-    1) UploadFile 을 temp_images 폴더에 저장
-    2) YOLO 탐지
-    3) OCR 인식
-    4) 최종 라벨 결정
-    5) 최종 결과 딕셔너리 반환
+    업로드된 이미지를 Gemini에게 보내서
+    분리배출 정보를 JSON으로 받아오는 함수.
     """
-    # 1) 임시 저장 경로 준비
-    os.makedirs("temp_images", exist_ok=True)
-    original_name = image.filename or ""
-    ext = os.path.splitext(original_name)[1] or ".jpg"
-    temp_filename = f"{uuid.uuid4().hex}{ext}"
-    temp_path = os.path.join("temp_images", temp_filename)
 
-    # 2) 파일 저장
-    data = await image.read()
+    # 1) 이미지 파일을 temp 디렉토리에 저장 (디버깅/로그용)
+    temp_dir = "temp_images"
+    os.makedirs(temp_dir, exist_ok=True)
+
+    temp_id = uuid.uuid4().hex
+    # 확장자 대충 맞추기 (없으면 기본 jpeg)
+    ext = ".jpeg"
+    if image.filename and "." in image.filename:
+        ext = "." + image.filename.rsplit(".", 1)[-1]
+
+    temp_path = os.path.join(temp_dir, f"{temp_id}{ext}")
+
+    file_bytes = await image.read()
+
     with open(temp_path, "wb") as f:
-        f.write(data)
+        f.write(file_bytes)
 
-    print(f"[ANALYZE] Saved upload to: {temp_path}")
+    # MIME 타입 (없으면 jpeg로)
+    mime_type = image.content_type or "image/jpeg"
 
-    # 3) YOLO / OCR 실행
-    yolo_detections = run_yolo(temp_path)
-    ocr_results = run_ocr(temp_path)
+    # 2) Gemini에 이미지 + 프롬프트 보내기
+    #    - image bytes를 Part.from_bytes로 감싸서 contents에 넣습니다.  [oai_citation:3‡Google AI for Developers](https://ai.google.dev/gemini-api/docs/image-understanding?utm_source=chatgpt.com)
+    try:
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[
+                # 이미지
+                types.Part.from_bytes(
+                    data=file_bytes,
+                    mime_type=mime_type,
+                ),
+                # 텍스트 프롬프트
+                "위 시스템 지시를 따르세요. 이 사진 속 물건의 분리배출 방법을 "
+                "지금 정의한 JSON 형식에 정확히 맞춰서 응답만 주세요.",
+            ],
+            # JSON으로 꼭 떨어지도록 설정 (structured output)  [oai_citation:4‡Google AI for Developers](https://ai.google.dev/gemini-api/docs/structured-output?utm_source=chatgpt.com)
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+            ),
+        )
+    except Exception as e:
+        # Gemini 호출 실패 시, 서버가 죽지 않도록 예외 처리
+        return {
+            "error": "Gemini API 호출 중 오류가 발생했습니다.",
+            "detail": str(e),
+            "temp_path": temp_path,
+        }
 
-    # 4) 최종 라벨 결정
-    final_label = decide_final_label(yolo_detections, ocr_results)
+    # 3) 응답 파싱 (response.text에 JSON 문자열이 들어옵니다)  [oai_citation:5‡Google AI for Developers](https://ai.google.dev/gemini-api/docs/migrate?utm_source=chatgpt.com)
+    try:
+        advice = json.loads(response.text)
+    except Exception:
+        # 혹시 모델이 JSON을 깨먹었을 때 대비
+        advice = {"raw_response": response.text}
 
-    # 5) 결과 반환 (FastAPI가 그대로 JSON으로 내려줌)
-    return {
-        "final_label": final_label,
-        "yolo_detections": yolo_detections,
-        "ocr_results": ocr_results,
-        "temp_path": temp_path,  # 디버깅용(나중에 필요 없으면 삭제해도 됨)
+    # 4) FastAPI가 반환할 최종 JSON
+    result: Dict[str, Any] = {
+    "gemini_advice": advice,
+    "temp_path": temp_path,   # ← 여기 수정됨
+    "model": GEMINI_MODEL,
     }
+
+    return result
