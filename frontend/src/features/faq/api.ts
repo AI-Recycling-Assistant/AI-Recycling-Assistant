@@ -1,23 +1,22 @@
-import axios from 'axios';
-
-const httpClient = axios.create({
-  baseURL: 'http://localhost:8080',
-  timeout: 10000,
-});
+import { http } from '../../utils/http';
 
 export interface FaqSummary {
   id: number;
   question: string;
+  wasteType: string;
   category: string;
-  helpful: number;
+  likeCount: number;
+  dislikeCount: number;
 }
 
 export interface FaqDetail {
   id: number;
   question: string;
   answer: string;
+  wasteType: string;
   category: string;
-  helpful: number;
+  likeCount: number;
+  dislikeCount: number;
   createdAt: string;
 }
 
@@ -48,25 +47,27 @@ export const faqApi = {
     searchParams.append('page', (params.page || 0).toString());
     searchParams.append('size', (params.size || 10).toString());
 
-    const response = await httpClient.get(`/api/faqs?${searchParams}`);
-    return response.data;
+    return await http(`/api/faqs?${searchParams}`);
   },
 
   // FAQ 상세 조회
   getFaqDetail: async (id: number): Promise<FaqDetail> => {
-    const response = await httpClient.get(`/api/faqs/${id}`);
-    return response.data;
+    return await http(`/api/faqs/${id}`);
   },
 
   // FAQ 추천/비추천
   voteFaq: async (id: number, voteData: FaqVoteRequest) => {
-    const response = await httpClient.post(`/api/faqs/${id}/vote`, voteData);
-    return response.data;
+    return await http(`/api/faqs/${id}/vote`, {
+      method: 'POST',
+      body: voteData
+    });
   },
 
   // 피드백 제출
   submitFeedback: async (feedbackData: FaqFeedbackRequest) => {
-    const response = await httpClient.post('/api/faqs/feedback', feedbackData);
-    return response.data;
+    return await http('/api/faqs/feedback', {
+      method: 'POST',
+      body: feedbackData
+    });
   },
 };
