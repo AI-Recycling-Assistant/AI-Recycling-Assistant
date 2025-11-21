@@ -20,6 +20,18 @@ export default function FAQDetailScreen() {
   const { data: faq, isLoading } = useFaqDetail(Number(id));
   const voteMutation = useFaqVote();
   
+  const getCategoryKorean = (category: string) => {
+    const categoryKoreanMap: { [key: string]: string } = {
+      "plastic": "플라스틱",
+      "paper": "종이",
+      "glass": "유리",
+      "vinyl": "비닐",
+      "general": "일반쓰레기",
+      "food": "음식물"
+    };
+    return categoryKoreanMap[category] || category;
+  };
+  
   const handleVote = () => {
     if (!faq) return;
     voteMutation.mutate({
@@ -71,17 +83,7 @@ export default function FAQDetailScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={true}
       >
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={[styles.backButton, backPressed && styles.backButtonPressed]}
-          onPressIn={() => setBackPressed(true)}
-          onPressOut={() => setBackPressed(false)}
-        >
-          <Ionicons name="chevron-back" size={32} color="#111827" />
-        </TouchableOpacity>
-        <View style={styles.placeholder} />
-      </View>
+
 
       {/* 질문 */}
       {isLoading ? (
@@ -89,13 +91,13 @@ export default function FAQDetailScreen() {
       ) : faq ? (
         <View style={styles.questionContainer}>
           <View style={styles.categoryBadge}>
-            <Text style={styles.categoryText}>{faq.category}</Text>
+            <Text style={styles.categoryText}>{getCategoryKorean(faq.wasteType || faq.category)}</Text>
           </View>
           <Text style={styles.questionTitle}>{faq.question}</Text>
           <View style={styles.questionMeta}>
             <View style={styles.helpfulInfo}>
               <Ionicons name="thumbs-up-outline" size={16} color="#6B7280" />
-              <Text style={styles.helpfulText}>도움됨 {faq.helpful}</Text>
+              <Text style={styles.helpfulText}>도움됨 {faq.likeCount}</Text>
             </View>
             <Text style={styles.dateText}>{new Date(faq.createdAt).toLocaleDateString('ko-KR')}</Text>
           </View>

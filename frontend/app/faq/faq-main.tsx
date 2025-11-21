@@ -28,21 +28,37 @@ export default function FAQMainScreen() {
   
   const categoryMap: { [key: string]: string } = {
     "플라스틱": "plastic",
-    "종이류": "paper", 
-    "유리병": "glass",
-    "캔류": "metal",
+    "종이": "paper", 
+    "유리": "glass",
+    "비닐": "vinyl",
     "일반쓰레기": "general",
-    "기타": "etc"
+    "음식물": "food"
   };
+  
+  const getCategoryKorean = (category: string) => {
+    const categoryKoreanMap: { [key: string]: string } = {
+      "plastic": "플라스틱",
+      "paper": "종이",
+      "glass": "유리",
+      "vinyl": "비닐",
+      "general": "일반쓰레기",
+      "food": "음식물"
+    };
+    return categoryKoreanMap[category] || category;
+  };
+  
+  const selectedCategoryEng = selectedCategory === "전체" ? undefined : categoryMap[selectedCategory];
+  console.log('선택된 카테고리:', selectedCategory, '->', selectedCategoryEng);
   
   const { data: faqData, isLoading } = useFaqList({
     q: searchText || undefined,
-    category: selectedCategory === "전체" ? undefined : categoryMap[selectedCategory],
+    category: selectedCategoryEng,
     page: 0,
     size: 20
   });
   
   const faqs = faqData?.content || [];
+  console.log('FAQ 데이터:', faqs.length, '개', faqs.map(f => ({ id: f.id, category: f.category, wasteType: f.wasteType })));
 
   if (!fontsLoaded) return null;
 
@@ -55,15 +71,6 @@ export default function FAQMainScreen() {
       >
         {/* 헤더 섹션 */}
         <View style={styles.headerSection}>
-          <View style={styles.topHeader}>
-            <TouchableOpacity 
-              style={styles.backButton}
-              onPress={() => router.back()}
-            >
-              <Ionicons name="chevron-back" size={24} color="#111827" />
-            </TouchableOpacity>
-          </View>
-          
           <View style={styles.header}>
             <Text style={styles.brand}>분리배출</Text>
             <Text style={styles.title}>FAQ 빠른가이드</Text>
@@ -128,11 +135,11 @@ export default function FAQMainScreen() {
                     <Text style={styles.questionText}>{faq.question}</Text>
                     <View style={styles.questionMeta}>
                       <View style={styles.categoryTag}>
-                        <Text style={styles.categoryTagText}>{faq.category}</Text>
+                        <Text style={styles.categoryTagText}>{getCategoryKorean(faq.wasteType || faq.category)}</Text>
                       </View>
                       <View style={styles.helpfulInfo}>
                         <Ionicons name="thumbs-up-outline" size={12} color="#6B7280" />
-                        <Text style={styles.helpfulText}>도움됨 {faq.helpful}</Text>
+                        <Text style={styles.helpfulText}>도움됨 {faq.likeCount}</Text>
                       </View>
                     </View>
                   </View>
@@ -159,15 +166,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 8,
   },
-  topHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-  backButton: {
-    padding: 8,
-  },
+
   header: {
     alignItems: "center",
     marginBottom: 16,

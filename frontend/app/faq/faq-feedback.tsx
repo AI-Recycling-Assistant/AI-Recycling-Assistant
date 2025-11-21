@@ -66,16 +66,7 @@ export default function FAQFeedbackScreen() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={true}
     >
-      {/* 헤더 */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Ionicons name="chevron-back" size={32} color="#111827" />
-        </TouchableOpacity>
-        <View style={styles.placeholder} />
-      </View>
+
 
       {/* 메인 콘텐츠 */}
       <View style={styles.mainContent}>
