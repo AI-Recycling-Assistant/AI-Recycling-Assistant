@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotNull;
 
 @Getter @Setter @NoArgsConstructor
 public class FaqVoteRequest {
-    public enum Vote { LIKE, DISLIKE }
-    @NotNull private Long userId;   // ★ 임시. 추후 JWT에서 추출
+    public enum Vote { UP, DOWN, LIKE, DISLIKE }
+    @NotNull private String userId;   // String으로 변경
     @NotNull private Vote vote;
 }

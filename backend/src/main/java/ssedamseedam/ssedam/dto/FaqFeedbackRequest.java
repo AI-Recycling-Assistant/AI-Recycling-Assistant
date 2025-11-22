@@ -6,8 +6,8 @@ import jakarta.validation.constraints.NotNull;
 
 @Getter @Setter @NoArgsConstructor
 public class FaqFeedbackRequest {
-    @NotNull private Long faqId;
-    private Long userId;  // 비로그인도 허용 시 nullable
-    @NotBlank private String reason; // "INFO_ERROR" | "POLICY_CHANGED" | "IMAGE_ISSUE" | "TEXT_ISSUE" | "OTHER"
-    private String detail;
+    private Long faqId;  // nullable로 변경
+    private String userId;  // String으로 변경
+    @NotBlank private String content;
+    private String category;
 }

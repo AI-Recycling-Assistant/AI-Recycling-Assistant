@@ -33,7 +33,8 @@ export default function FAQFeedbackScreen() {
     
     try {
       await feedbackMutation.mutateAsync({
-        userId: "temp-user-id", // 실제 사용자 ID로 교체 필요
+        faqId: faqId ? Number(faqId) : undefined,
+        userId: "1", // 임시 사용자 ID
         content: `[사유: ${selectedReason}] ${feedback}`,
         category: selectedReason
       });
@@ -101,15 +102,25 @@ export default function FAQFeedbackScreen() {
           />
         </View>
 
-        {/* 제출 버튼 */}
-        <TouchableOpacity 
-          style={[styles.submitButton, feedback.trim() && selectedReason && styles.submitButtonActive]}
-          onPress={handleSubmit}
-        >
-          <Text style={[styles.submitButtonText, feedback.trim() && selectedReason && styles.submitButtonTextActive]}>
-            피드백 제출하기
-          </Text>
-        </TouchableOpacity>
+        {/* 분할 버튼 */}
+        <View style={styles.splitButtonContainer}>
+          <TouchableOpacity 
+            style={styles.backButtonHalf}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="chevron-back" size={20} color="#6B7280" />
+            <Text style={styles.backButtonText}>뒤로가기</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.submitButtonHalf, feedback.trim() && selectedReason && styles.submitButtonHalfActive]}
+            onPress={handleSubmit}
+          >
+            <Text style={[styles.submitButtonText, feedback.trim() && selectedReason && styles.submitButtonTextActive]}>
+              피드백 제출하기
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {/* 안내 텍스트 */}
         <Text style={styles.infoText}>
@@ -236,13 +247,38 @@ const styles = StyleSheet.create({
     color: "#111827",
     minHeight: 120,
   },
-  submitButton: {
-    backgroundColor: "#F3F4F6",
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
+  splitButtonContainer: {
+    flexDirection: "row",
     width: "100%",
     marginBottom: 24,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  backButtonHalf: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    paddingVertical: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  backButtonText: {
+    fontFamily: "Jua_400Regular",
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  submitButtonHalf: {
+    flex: 1,
+    backgroundColor: "#F3F4F6",
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  submitButtonHalfActive: {
+    backgroundColor: "#6B7280",
   },
   submitButtonActive: {
     backgroundColor: "#6B7280",

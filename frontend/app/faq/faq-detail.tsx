@@ -4,13 +4,13 @@ import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useFaqDetail, useFaqVote } from "../../src/features/faq/hooks";
+import { faqApi } from "../../src/features/faq/api";
 
 export default function FAQDetailScreen() {
   const [fontsLoaded] = useFonts({ Jua_400Regular });
   const [isHelpful, setIsHelpful] = useState(false);
   const [helpfulPressed, setHelpfulPressed] = useState(false);
-  const [sharePressed, setSharePressed] = useState(false);
-  const [relatedPressed, setRelatedPressed] = useState<{[key: number]: boolean}>({});
+
   const [backPressed, setBackPressed] = useState(false);
   const [feedbackPressed, setFeedbackPressed] = useState(false);
   const slideAnim = useRef(new Animated.Value(0)).current;
@@ -20,28 +20,42 @@ export default function FAQDetailScreen() {
   const { data: faq, isLoading } = useFaqDetail(Number(id));
   const voteMutation = useFaqVote();
   
-  const getCategoryKorean = (category: string) => {
-    const categoryKoreanMap: { [key: string]: string } = {
-      "plastic": "플라스틱",
-      "paper": "종이",
-      "glass": "유리",
-      "vinyl": "비닐",
-      "general": "일반쓰레기",
-      "food": "음식물"
-    };
-    return categoryKoreanMap[category] || category;
+  // 페이지 로드 시 투표 상태 확인
+  useEffect(() => {
+    if (faq) {
+      faqApi.getVoteStatus(faq.id, "1")
+        .then(response => {
+          setIsHelpful(response.hasVoted);
+        })
+        .catch(error => {
+          console.error('투표 상태 확인 실패:', error);
+        });
+    }
+  }, [faq]);
+  
+  // ✅ DB에 한글로 저장되어 있으므로 그대로 반환
+  const getCategoryKorean = (value: string) => {
+    if (!value) return "";
+    return value; // DB에 이미 한글로 저장됨
   };
   
   const handleVote = () => {
-    if (!faq) return;
+    if (!faq || voteMutation.isPending) return;
+    
     voteMutation.mutate({
       id: faq.id,
       voteData: {
-        userId: "temp-user-id", // 실제 사용자 ID로 교체 필요
-        vote: "UP"
+        userId: "1", // 임시 사용자 ID
+        vote: "LIKE"
+      }
+    }, {
+      onSuccess: () => {
+        setIsHelpful(!isHelpful); // 토글
+      },
+      onError: (error) => {
+        console.error('투표 실패:', error);
       }
     });
-    setIsHelpful(true);
   };
   
   useEffect(() => {
@@ -78,12 +92,23 @@ export default function FAQDetailScreen() {
         }
       ]}
     >
+      {/* TopBar */}
+      <View style={styles.topBar}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="chevron-back" size={24} color="#111827" />
+        </TouchableOpacity>
+        <Text style={styles.topBarTitle}>FAQ</Text>
+        <View style={styles.placeholder} />
+      </View>
+
       <ScrollView 
         style={styles.scrollContainer} 
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={true}
       >
-
 
       {/* 질문 */}
       {isLoading ? (
@@ -91,7 +116,9 @@ export default function FAQDetailScreen() {
       ) : faq ? (
         <View style={styles.questionContainer}>
           <View style={styles.categoryBadge}>
-            <Text style={styles.categoryText}>{getCategoryKorean(faq.wasteType || faq.category)}</Text>
+            <Text style={styles.categoryText}>
+              {getCategoryKorean(faq.wasteType || faq.category)}
+            </Text>
           </View>
           <Text style={styles.questionTitle}>{faq.question}</Text>
           <View style={styles.questionMeta}>
@@ -99,7 +126,9 @@ export default function FAQDetailScreen() {
               <Ionicons name="thumbs-up-outline" size={16} color="#6B7280" />
               <Text style={styles.helpfulText}>도움됨 {faq.likeCount}</Text>
             </View>
-            <Text style={styles.dateText}>{new Date(faq.createdAt).toLocaleDateString('ko-KR')}</Text>
+            <Text style={styles.dateText}>
+              {new Date(faq.createdAt).toLocaleDateString('ko-KR')}
+            </Text>
           </View>
         </View>
       ) : (
@@ -116,31 +145,20 @@ export default function FAQDetailScreen() {
       {/* 도움됨 버튼 */}
       <View style={styles.actionContainer}>
         <TouchableOpacity 
-          style={[styles.helpfulButton, helpfulPressed && styles.helpfulButtonHover]}
+          style={[styles.helpfulButton, isHelpful && styles.helpfulButtonActive]}
           onPressIn={() => setHelpfulPressed(true)}
           onPressOut={() => setHelpfulPressed(false)}
           onPress={handleVote}
+          disabled={voteMutation.isPending}
         >
           <Ionicons 
-            name="thumbs-up-outline" 
-            size={helpfulPressed ? 24 : 20} 
-            color={helpfulPressed ? "#3B82F6" : "#6B7280"} 
-            style={helpfulPressed && { transform: [{ rotate: '5deg' }] }}
+            name={isHelpful ? "thumbs-up" : "thumbs-up-outline"}
+            size={20} 
+            color={isHelpful ? "#3B82F6" : "#6B7280"} 
           />
-          <Text style={[styles.helpfulButtonText, helpfulPressed && styles.helpfulButtonTextHover]}>도움이 되었어요</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.shareButton, sharePressed && styles.shareButtonHover]}
-          onPressIn={() => setSharePressed(true)}
-          onPressOut={() => setSharePressed(false)}
-        >
-          <Ionicons 
-            name="share-outline" 
-            size={sharePressed ? 24 : 20} 
-            color={sharePressed ? "#3B82F6" : "#6B7280"} 
-            style={sharePressed && { transform: [{ translateY: -3 }, { scale: 1.2 }] }}
-          />
-          <Text style={[styles.shareButtonText, sharePressed && styles.shareButtonTextHover]}>공유하기</Text>
+          <Text style={[styles.helpfulButtonText, isHelpful && styles.helpfulButtonTextActive]}>
+            {voteMutation.isPending ? "제출 중..." : isHelpful ? "도움됨" : "도움이 되었어요"}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -162,36 +180,6 @@ export default function FAQDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 관련 질문 */}
-      <View style={styles.relatedContainer}>
-        <Text style={styles.relatedTitle}>관련 질문</Text>
-        <View style={styles.relatedList}>
-          <TouchableOpacity 
-            style={[styles.relatedItem, relatedPressed[0] && styles.relatedItemPressed]}
-            onPressIn={() => setRelatedPressed(prev => ({...prev, 0: true}))}
-            onPressOut={() => setRelatedPressed(prev => ({...prev, 0: false}))}
-          >
-            <Text style={styles.relatedQuestion}>플라스틱 뚜껑과 본체를 분리해야 하나요?</Text>
-            <Ionicons name="chevron-forward-outline" size={16} color="#6B7280" style={[styles.relatedArrow, relatedPressed[0] && styles.relatedArrowVisible]} />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.relatedItem, relatedPressed[1] && styles.relatedItemPressed]}
-            onPressIn={() => setRelatedPressed(prev => ({...prev, 1: true}))}
-            onPressOut={() => setRelatedPressed(prev => ({...prev, 1: false}))}
-          >
-            <Text style={styles.relatedQuestion}>페트병 라벨 제거가 필수인가요?</Text>
-            <Ionicons name="chevron-forward-outline" size={16} color="#6B7280" style={[styles.relatedArrow, relatedPressed[1] && styles.relatedArrowVisible]} />
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.relatedItem, relatedPressed[2] && styles.relatedItemPressed]}
-            onPressIn={() => setRelatedPressed(prev => ({...prev, 2: true}))}
-            onPressOut={() => setRelatedPressed(prev => ({...prev, 2: false}))}
-          >
-            <Text style={styles.relatedQuestion}>플라스틱 용기 세척은 어느 정도까지?</Text>
-            <Ionicons name="chevron-forward-outline" size={16} color="#6B7280" style={[styles.relatedArrow, relatedPressed[2] && styles.relatedArrowVisible]} />
-          </TouchableOpacity>
-        </View>
-      </View>
       </ScrollView>
     </Animated.View>
   );
@@ -208,6 +196,22 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingVertical: 16,
+  },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  topBarTitle: {
+    fontFamily: "Jua_400Regular",
+    fontSize: 18,
+    color: "#111827",
+    fontWeight: "600",
   },
   header: {
     flexDirection: "row",
@@ -279,12 +283,9 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
   actionContainer: {
-    flexDirection: "row",
-    gap: 12,
     marginBottom: 16,
   },
   helpfulButton: {
-    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -298,6 +299,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#EBF4FF",
     borderColor: "#3B82F6",
   },
+  helpfulButtonActive: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#3B82F6",
+    borderWidth: 2,
+  },
   helpfulButtonText: {
     fontFamily: "Jua_400Regular",
     fontSize: 14,
@@ -307,67 +313,8 @@ const styles = StyleSheet.create({
   helpfulButtonTextHover: {
     color: "#3B82F6",
   },
-  shareButtonHover: {
-    backgroundColor: "#EBF4FF",
-    borderColor: "#3B82F6",
-  },
-  shareButtonTextHover: {
+  helpfulButtonTextActive: {
     color: "#3B82F6",
-  },
-  shareButton: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F9FAFB",
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  shareButtonText: {
-    fontFamily: "Jua_400Regular",
-    fontSize: 14,
-    color: "#6B7280",
-    marginLeft: 6,
-  },
-  relatedContainer: {
-    marginBottom: 24,
-  },
-  relatedTitle: {
-    fontFamily: "Jua_400Regular",
-    fontSize: 18,
-    color: "#111827",
-    marginBottom: 16,
-  },
-  relatedList: {
-    gap: 12,
-  },
-  relatedItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#F9FAFB",
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  relatedItemPressed: {
-    backgroundColor: "#F3F4F6",
-  },
-  relatedArrow: {
-    opacity: 0,
-  },
-  relatedArrowVisible: {
-    opacity: 1,
-  },
-  relatedQuestion: {
-    flex: 1,
-    fontSize: 14,
-    color: "#374151",
-    fontFamily: "Jua_400Regular",
-    marginRight: 12,
   },
   feedbackContainer: {
     alignItems: "flex-end",
