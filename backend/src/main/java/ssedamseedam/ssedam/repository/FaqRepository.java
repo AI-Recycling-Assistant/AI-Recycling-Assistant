@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ssedamseedam.ssedam.domain.Faq;
+import java.util.List;
 
 public interface FaqRepository extends JpaRepository<Faq, Long> {
 
@@ -15,6 +16,8 @@ public interface FaqRepository extends JpaRepository<Faq, Long> {
         SELECT f
         FROM Faq f
         WHERE (:category IS NULL OR f.category = :category)
+          AND (:wasteType IS NULL OR f.wasteType = :wasteType)
+          AND (:excludeWasteTypes IS NULL OR f.wasteType NOT IN :excludeWasteTypes)
           AND (
               :qLower IS NULL
               OR LOWER(f.question) LIKE CONCAT('%', :qLower, '%')
@@ -24,5 +27,7 @@ public interface FaqRepository extends JpaRepository<Faq, Long> {
         """)
     Page<Faq> search(@Param("qLower") String qLower,
                      @Param("category") String category,
+                     @Param("wasteType") String wasteType,
+                     @Param("excludeWasteTypes") List<String> excludeWasteTypes,
                      Pageable pageable);
 }

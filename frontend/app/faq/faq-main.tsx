@@ -1,8 +1,9 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from "react-native";
 import { useFonts, Jua_400Regular } from "@expo-google-fonts/jua";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "expo-router";
 import { useFaqList } from "../../src/features/faq/hooks";
+import { http } from "../../src/utils/http";
 import { Ionicons } from "@expo/vector-icons";
 
 type FAQCategory = {
@@ -18,57 +19,113 @@ const FAQ_CATEGORIES: FAQCategory[] = [
   { id: "vinyl", title: "비닐", emoji: "🛍️" },
   { id: "paper", title: "종이", emoji: "📄" },
   { id: "food", title: "음식물", emoji: "🍎" },
+  { id: "metal", title: "금속", emoji: "🔩" },
+  { id: "clothing", title: "의류", emoji: "👕" },
+  { id: "etc", title: "기타", emoji: "📦" },
 ];
+
+// 카테고리에 매칭되는 DB waste_type 값들
+const categoryToWasteTypes: { [key: string]: string[] } = {
+  "일반쓰레기": ["일반쓰래기"], // DB에 이렇게 저장되어 있을 수 있음
+  "플라스틱": ["플라스틱"],
+  "유리": ["유리"],
+  "비닐": ["비닐"],
+  "종이": ["종이"],
+  "음식물": ["음식물"],
+  "금속": ["금속"],
+  "의류": ["의류"],
+  "기타": [] // 기타는 다른 카테고리에 속하지 않는 모든 것
+};
+
+// 선택된 카테고리에 따른 필터링 로직
+const getFilterForCategory = (category: string) => {
+  if (category === "전체") return undefined;
+  if (category === "기타") {
+    // 기타: 다른 카테고리에 속하지 않는 모든 waste_type
+    const knownWasteTypes = Object.values(categoryToWasteTypes).flat().filter(Boolean);
+    return { excludeWasteTypes: knownWasteTypes };
+  }
+  return { wasteType: categoryToWasteTypes[category]?.[0] };
+};
+
+// waste_type을 카테고리 라벨로 변환 (알려지지 않은 것은 기타로)
+const getWasteTypeLabel = (value?: string) => {
+  if (!value) return "기타";
+  
+  // 알려진 카테고리에 속하는지 확인
+  for (const [category, wasteTypes] of Object.entries(categoryToWasteTypes)) {
+    if (wasteTypes.includes(value)) {
+      return category;
+    }
+  }
+  
+  // 알려지지 않은 waste_type은 기타로 분류
+  return "기타";
+};
 
 export default function FAQMainScreen() {
   const [fontsLoaded] = useFonts({ Jua_400Regular });
   const [searchText, setSearchText] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("전체");
   const router = useRouter();
-  
-  const categoryMap: { [key: string]: string } = {
-    "플라스틱": "plastic",
-    "종이": "paper", 
-    "유리": "glass",
-    "비닐": "vinyl",
-    "일반쓰레기": "general",
-    "음식물": "food"
-  };
-  
-  const getCategoryKorean = (category: string) => {
-    const categoryKoreanMap: { [key: string]: string } = {
-      "plastic": "플라스틱",
-      "paper": "종이",
-      "glass": "유리",
-      "vinyl": "비닐",
-      "general": "일반쓰레기",
-      "food": "음식물"
-    };
-    return categoryKoreanMap[category] || category;
-  };
-  
-  const selectedCategoryEng = selectedCategory === "전체" ? undefined : categoryMap[selectedCategory];
-  console.log('선택된 카테고리:', selectedCategory, '->', selectedCategoryEng);
-  
-  const { data: faqData, isLoading } = useFaqList({
+
+  const filterConfig = getFilterForCategory(selectedCategory);
+
+  console.log("선택된 카테고리:", selectedCategory);
+  console.log("검색어:", searchText);
+  console.log("필터 설정:", filterConfig);
+
+  const { data: faqData, isLoading, error } = useFaqList({
     q: searchText || undefined,
-    category: selectedCategoryEng,
+    wasteType: filterConfig?.wasteType,
+    excludeWasteTypes: filterConfig?.excludeWasteTypes,
     page: 0,
-    size: 20
+    size: 20,
   });
+
+  console.log("API 응답:", faqData);
+  console.log("로딩 상태:", isLoading);
+  console.log("에러:", error);
   
+  // 디버깅: 실제 DB 데이터 확인
+  useEffect(() => {
+    const checkDbData = async () => {
+      try {
+        const dbData = await http('/api/faqs/debug/waste-types');
+        console.log('=== DB 실제 데이터 ===');
+        console.log('wasteTypes:', dbData.wasteTypes);
+        console.log('categories:', dbData.categories);
+        console.log('샘플 FAQ들:', dbData.sampleFaqs);
+      } catch (error) {
+        console.log('DB 데이터 확인 실패:', error);
+      }
+    };
+    checkDbData();
+  }, []);
+
   const faqs = faqData?.content || [];
-  console.log('FAQ 데이터:', faqs.length, '개', faqs.map(f => ({ id: f.id, category: f.category, wasteType: f.wasteType })));
 
   if (!fontsLoaded) return null;
 
   return (
     <View style={styles.container}>
-      <ScrollView 
+      <ScrollView
         style={styles.phoneContent}
         showsVerticalScrollIndicator={true}
         stickyHeaderIndices={[2]}
       >
+        {/* 상단 내비 헤더 */}
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Ionicons name="arrow-back" size={24} color="#111827" />
+          </TouchableOpacity>
+          <Text style={styles.topBarTitle}>FAQ</Text>
+          <View style={{ width: 24 }} />
+        </View>
+
         {/* 헤더 섹션 */}
         <View style={styles.headerSection}>
           <View style={styles.header}>
@@ -92,25 +149,47 @@ export default function FAQMainScreen() {
         {/* 스티키 헤더 */}
         <View style={styles.stickyHeader}>
           <Text style={styles.sectionTitle}>카테고리</Text>
-          <ScrollView 
-            horizontal 
+          <ScrollView
+            horizontal
             showsHorizontalScrollIndicator={false}
             style={styles.categoryScroll}
           >
-            <TouchableOpacity 
-              style={[styles.categoryChip, selectedCategory === "전체" && styles.categoryChipSelected]}
+            <TouchableOpacity
+              style={[
+                styles.categoryChip,
+                selectedCategory === "전체" && styles.categoryChipSelected,
+              ]}
               onPress={() => setSelectedCategory("전체")}
             >
-              <Text style={[styles.categoryChipText, selectedCategory === "전체" && styles.categoryChipTextSelected]}>전체</Text>
+              <Text
+                style={[
+                  styles.categoryChipText,
+                  selectedCategory === "전체" && styles.categoryChipTextSelected,
+                ]}
+              >
+                전체
+              </Text>
             </TouchableOpacity>
             {FAQ_CATEGORIES.map((category) => (
-              <TouchableOpacity 
-                key={category.id} 
-                style={[styles.categoryChip, selectedCategory === category.title && styles.categoryChipSelected]}
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  styles.categoryChip,
+                  selectedCategory === category.title &&
+                    styles.categoryChipSelected,
+                ]}
                 onPress={() => setSelectedCategory(category.title)}
               >
                 <Text style={styles.categoryChipEmoji}>{category.emoji}</Text>
-                <Text style={[styles.categoryChipText, selectedCategory === category.title && styles.categoryChipTextSelected]}>{category.title}</Text>
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    selectedCategory === category.title &&
+                      styles.categoryChipTextSelected,
+                  ]}
+                >
+                  {category.title}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -126,8 +205,8 @@ export default function FAQMainScreen() {
               <Text style={styles.emptyText}>검색 결과가 없습니다.</Text>
             ) : (
               faqs.map((faq: any) => (
-                <TouchableOpacity 
-                  key={faq.id} 
+                <TouchableOpacity
+                  key={faq.id}
                   style={styles.questionItem}
                   onPress={() => router.push(`/faq/faq-detail?id=${faq.id}`)}
                 >
@@ -135,11 +214,19 @@ export default function FAQMainScreen() {
                     <Text style={styles.questionText}>{faq.question}</Text>
                     <View style={styles.questionMeta}>
                       <View style={styles.categoryTag}>
-                        <Text style={styles.categoryTagText}>{getCategoryKorean(faq.wasteType || faq.category)}</Text>
+                        <Text style={styles.categoryTagText}>
+                          {getWasteTypeLabel(faq.wasteType || faq.category)}
+                        </Text>
                       </View>
                       <View style={styles.helpfulInfo}>
-                        <Ionicons name="thumbs-up-outline" size={12} color="#6B7280" />
-                        <Text style={styles.helpfulText}>도움됨 {faq.likeCount}</Text>
+                        <Ionicons
+                          name="thumbs-up-outline"
+                          size={12}
+                          color="#6B7280"
+                        />
+                        <Text style={styles.helpfulText}>
+                          도움됨 {faq.likeCount}
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -162,11 +249,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerSection: {
-    paddingTop: 8,
+    paddingTop: 16,
     paddingHorizontal: 20,
     paddingBottom: 8,
   },
-
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+    paddingVertical: 12,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  topBarTitle: {
+    fontFamily: "Jua_400Regular",
+    fontSize: 18,
+    color: "#111827",
+  },
+  backButton: {
+    padding: 4,
+  },
   header: {
     alignItems: "center",
     marginBottom: 16,

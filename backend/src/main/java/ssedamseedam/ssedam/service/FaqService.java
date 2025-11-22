@@ -11,6 +11,8 @@ import ssedamseedam.ssedam.repository.*;
 
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Map;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -54,8 +56,24 @@ public class FaqService {
         // 카테고리 정규화
         String category = cond.getCategory();
         category = (category == null || category.isBlank()) ? null : category.trim();
+        
+        // wasteType 정규화
+        String wasteType = cond.getWasteType();
+        wasteType = (wasteType == null || wasteType.isBlank()) ? null : wasteType.trim();
+        
+        // excludeWasteTypes 정규화
+        List<String> excludeWasteTypes = cond.getExcludeWasteTypes();
+        if (excludeWasteTypes != null) {
+            excludeWasteTypes = excludeWasteTypes.stream()
+                .filter(type -> type != null && !type.isBlank())
+                .map(String::trim)
+                .toList();
+            if (excludeWasteTypes.isEmpty()) {
+                excludeWasteTypes = null;
+            }
+        }
 
-        return faqRepository.search(qLower, category, pageable)
+        return faqRepository.search(qLower, category, wasteType, excludeWasteTypes, pageable)
                 .map(f -> new FaqSummaryResponse(
                         f.getId(),
                         f.getQuestion(),
@@ -91,52 +109,69 @@ public class FaqService {
      * - 집계는 음수 방지
      */
     @Transactional
-    public void vote(Long faqId, Long userId, FaqVoteRequest.Vote vote) {
-        Faq faq = faqRepository.findById(faqId)
-                .orElseThrow(() -> new IllegalArgumentException("FAQ가 존재하지 않습니다."));
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자가 존재하지 않습니다."));
-
-        var existingOpt = faqVoteRepository.findByUserAndFaq(user, faq);
-
-        FaqVote.VoteType newType = (vote == FaqVoteRequest.Vote.LIKE)
-                ? FaqVote.VoteType.LIKE
-                : FaqVote.VoteType.DISLIKE;
-
-        if (existingOpt.isEmpty()) {
-            // 첫 투표
-            FaqVote newVote = FaqVote.builder()
-                    .faq(faq)
-                    .user(user)
-                    .type(newType)
-                    .build();
-            faqVoteRepository.save(newVote);
-
-            if (newType == FaqVote.VoteType.LIKE) {
-                faq.setLikeCount(safeInc(faq.getLikeCount()));
-            } else {
-                faq.setDislikeCount(safeInc(faq.getDislikeCount()));
+    public void vote(Long faqId, String userId, FaqVoteRequest.Vote vote) {
+        try {
+            Faq faq = faqRepository.findById(faqId)
+                    .orElseThrow(() -> new IllegalArgumentException("FAQ가 존재하지 않습니다."));
+            
+            // 사용자 찾기 또는 생성
+            User user = null;
+            try {
+                Long userIdLong = Long.parseLong(userId);
+                user = userRepository.findById(userIdLong).orElse(null);
+            } catch (NumberFormatException e) {
+                // 숫자가 아닌 경우 첫 번째 사용자 사용
             }
-            return;
+            
+            if (user == null) {
+                // 첫 번째 사용자 사용 또는 더미 사용자 생성
+                user = userRepository.findAll().stream().findFirst().orElse(null);
+                if (user == null) {
+                    // 더미 사용자 생성
+                    user = User.builder()
+                            .name("더미사용자")
+                            .username("dummy")
+                            .nickname("dummy")
+                            .password("dummy")
+                            .build();
+                    user = userRepository.save(user);
+                }
+            }
+            
+            processVote(faq, user, vote);
+        } catch (Exception e) {
+            System.err.println("투표 처리 중 오류: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
         }
+    }
+    
+    private void processVote(Faq faq, User user, FaqVoteRequest.Vote vote) {
+        try {
+            var existingOpt = faqVoteRepository.findByUserAndFaq(user, faq);
 
-        // 기존 투표 존재: 전환/유지
-        FaqVote existing = existingOpt.get();
-        if (existing.getType() == newType) {
-            // 동일 선택이면 아무 것도 하지 않음
-            return;
+            if (existingOpt.isEmpty()) {
+                // 첫 투표 - LIKE 추가
+                FaqVote newVote = FaqVote.builder()
+                        .faq(faq)
+                        .user(user)
+                        .type(FaqVote.VoteType.LIKE)
+                        .build();
+                faqVoteRepository.save(newVote);
+                faq.setLikeCount(safeInc(faq.getLikeCount()));
+                System.out.println("LIKE 추가: FAQ ID=" + faq.getId() + ", 새 카운트=" + faq.getLikeCount());
+            } else {
+                // 기존 LIKE 투표 존재 - 취소
+                FaqVote existing = existingOpt.get();
+                faqVoteRepository.delete(existing);
+                faq.setLikeCount(safeDec(faq.getLikeCount()));
+                System.out.println("LIKE 취소: FAQ ID=" + faq.getId() + ", 새 카운트=" + faq.getLikeCount());
+            }
+        } catch (Exception e) {
+            System.err.println("processVote 오류: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
         }
-
-        // 전환
-        if (existing.getType() == FaqVote.VoteType.LIKE) {
-            faq.setLikeCount(safeDec(faq.getLikeCount()));
-            faq.setDislikeCount(safeInc(faq.getDislikeCount()));
-        } else {
-            faq.setDislikeCount(safeDec(faq.getDislikeCount()));
-            faq.setLikeCount(safeInc(faq.getLikeCount()));
-        }
-        existing.setType(newType);
-        // JPA dirty checking 으로 flush 시점 반영
     }
 
     /**
@@ -146,30 +181,44 @@ public class FaqService {
      */
     @Transactional
     public Long submitFeedback(FaqFeedbackRequest req) {
-        if (req == null) {
-            throw new IllegalArgumentException("요청이 올바르지 않습니다.");
+        try {
+            System.out.println("피드백 서비스 시작: " + req.getContent());
+            
+            if (req == null) {
+                throw new IllegalArgumentException("요청이 올바르지 않습니다.");
+            }
+
+            Faq faq = null;
+            if (req.getFaqId() != null) {
+                faq = faqRepository.findById(req.getFaqId()).orElse(null);
+                System.out.println("FAQ 찾기 결과: " + (faq != null ? "found" : "not found"));
+            }
+
+            // 사용자 찾기
+            User user = userRepository.findAll().stream().findFirst().orElse(null);
+            System.out.println("사용자 찾기 결과: " + (user != null ? "found" : "not found"));
+            
+            if (user == null) {
+                throw new IllegalArgumentException("사용자가 존재하지 않습니다.");
+            }
+
+            // 간단한 피드백 생성
+            FaqFeedback fb = FaqFeedback.builder()
+                    .faq(faq)
+                    .user(user)
+                    .reason(FaqFeedback.Reason.OTHER) // 기본값 사용
+                    .detail(req.getContent())
+                    .build();
+
+            System.out.println("피드백 저장 시도...");
+            faqFeedbackRepository.save(fb);
+            System.out.println("피드백 저장 성공: " + fb.getId());
+            return fb.getId();
+        } catch (Exception e) {
+            System.err.println("피드백 서비스 에러: " + e.getMessage());
+            e.printStackTrace();
+            throw e;
         }
-
-        Faq faq = faqRepository.findById(req.getFaqId())
-                .orElseThrow(() -> new IllegalArgumentException("FAQ가 존재하지 않습니다."));
-
-        // 🔽 여기만 핵심 변경: 안전 파서 사용
-        FaqFeedback.Reason reason = FaqFeedback.Reason.from(req.getReason());
-
-        User user = null;
-        if (req.getUserId() != null) {
-            user = userRepository.findById(req.getUserId()).orElse(null); // 비로그인 허용
-        }
-
-        FaqFeedback fb = FaqFeedback.builder()
-                .faq(faq)
-                .user(user)
-                .reason(reason)
-                .detail(req.getDetail())
-                .build();
-
-        faqFeedbackRepository.save(fb);
-        return fb.getId();
     }
 
     /**
@@ -185,5 +234,59 @@ public class FaqService {
     private Long safeDec(Long v) {
         long cur = (v == null ? 0L : v);
         return Math.max(0L, cur - 1L);
+    }
+    
+    /**
+     * 사용자 투표 상태 확인
+     */
+    public boolean hasUserVoted(Long faqId, String userId) {
+        try {
+            Faq faq = faqRepository.findById(faqId).orElse(null);
+            if (faq == null) return false;
+            
+            User user = null;
+            try {
+                Long userIdLong = Long.parseLong(userId);
+                user = userRepository.findById(userIdLong).orElse(null);
+            } catch (NumberFormatException e) {
+                user = userRepository.findAll().stream().findFirst().orElse(null);
+            }
+            
+            if (user == null) return false;
+            
+            return faqVoteRepository.findByUserAndFaq(user, faq).isPresent();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+    
+    /**
+     * 디버깅용: 모든 FAQ의 wasteType 값들 반환
+     */
+    public Map<String, Object> getAllWasteTypes() {
+        var allFaqs = faqRepository.findAll();
+        var wasteTypes = allFaqs.stream()
+                .map(Faq::getWasteType)
+                .distinct()
+                .sorted()
+                .toList();
+        
+        var categories = allFaqs.stream()
+                .map(Faq::getCategory)
+                .distinct()
+                .sorted()
+                .toList();
+                
+        return Map.of(
+            "wasteTypes", wasteTypes,
+            "categories", categories,
+            "totalCount", allFaqs.size(),
+            "sampleFaqs", allFaqs.stream().limit(3).map(f -> Map.of(
+                "id", f.getId(),
+                "question", f.getQuestion(),
+                "wasteType", f.getWasteType(),
+                "category", f.getCategory()
+            )).toList()
+        );
     }
 }
