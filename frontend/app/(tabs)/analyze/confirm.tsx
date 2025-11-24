@@ -4,21 +4,19 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 export default function AnalyzeConfirm() {
   const router = useRouter();
-  const { uri, label, instruction, object } = useLocalSearchParams();
+  const { uri, objectName, label, instruction } = useLocalSearchParams();
+
   const imageUri = Array.isArray(uri) ? uri[0] : uri;
-  const finalLabel = Array.isArray(label) ? label[0] : label;
 
   return (
       <View style={s.container}>
         <View style={s.card}>
           <Text style={s.title}>분석 결과</Text>
 
-          {/* 이미지 */}
           {imageUri && <Image source={{ uri: imageUri }} style={s.image} />}
 
-          {/* 결과 영역 */}
           <View style={s.resultBox}>
-            <Text style={s.resultText}>🧾 물체 이름: {object}</Text>
+            <Text style={s.resultText}>📄 물체 이름: {objectName}</Text>
             <Text style={s.resultText}>🗑️ 분리수거 분류: {label}</Text>
           </View>
 
@@ -27,7 +25,6 @@ export default function AnalyzeConfirm() {
             <Text style={s.methodContent}>{instruction}</Text>
           </View>
 
-          {/* 버튼 */}
           <TouchableOpacity
               style={s.button}
               onPress={() => router.replace("/(tabs)/analyze")}
@@ -38,7 +35,6 @@ export default function AnalyzeConfirm() {
       </View>
   );
 }
-
 const s = StyleSheet.create({
   container: {
     flex: 1,
