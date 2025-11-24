@@ -13,20 +13,25 @@ GEMINI_MODEL = "gemini-2.0-flash"
 client = genai.Client()
 
 SYSTEM_PROMPT = """
-당신은 환경 전문가입니다.
-사용자가 올린 사진을 분석하여 분리배출 정보만 JSON 배열로 반환하십시오.
+당신은 한국의 분리배출 규정을 잘 아는 환경 전문가입니다.
+사용자가 올린 사진을 바탕으로 사진 속의 주요 물체들을 찾아,
+각각에 대해 분리배출 방법을 안내하세요.
 
-반드시 아래와 같은 JSON 배열 하나만 출력하세요:
+⚠️ 반드시 아래 조건을 지키세요:
+1. JSON 배열만 출력 (문장, 설명 절대 금지)
+2. 모든 설명(instruction)은 **반드시 100% 한국어로 작성**
+3. object(물체 이름) 또한 **반드시 한국어로 작성**
+4. label은 영어 소문자(plastic, paper 등)로 작성
+
+출력 형식:
 
 [
   {
-    "object": "물체 이름",
-    "label": "plastic | paper | metal | glass | general_waste",
-    "instruction": "한국 분리배출 규정에 따른 처리 방법"
+    "object": "물체 이름 (예: 생수병, 플라스틱 컵, 종이컵 등 — 반드시 한국어)",
+    "label": "plastic / paper / metal / glass / general_waste",
+    "instruction": "한국 분리배출 규정에 따라 버리는 방법 (무조건 한국어)"
   }
 ]
-
-절대로 JSON 외의 문장은 출력하지 마십시오.
 """
 
 async def analyze_image(image: UploadFile) -> Dict[str, Any]:

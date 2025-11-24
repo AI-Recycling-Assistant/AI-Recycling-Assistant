@@ -1,8 +1,14 @@
 import React, { useCallback, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
-  View, Text, Image, StyleSheet, TouchableOpacity,
-  Platform, KeyboardAvoidingView, Alert, ActivityIndicator
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  TouchableOpacity,
+  Platform,
+  KeyboardAvoidingView,
+  Modal,
 } from "react-native";
 import { analyzeImageWithSpring } from "@/src/features/photos/api";
 import { ImagePayload } from "@/src/features/photos/uploader";
@@ -16,12 +22,19 @@ const COLORS = {
   sub: "#64748B",
   primary: "#10B981",
   border: "#E2E8F0",
+  modalBg: "rgba(0,0,0,0.5)",
 };
 
 export default function AnalyzePreview() {
   const router = useRouter();
   const { uri } = useLocalSearchParams<Params>();
+
   const [loading, setLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const [objectName, setObjectName] = useState("");
+  const [label, setLabel] = useState("");
+  const [instruction, setInstruction] = useState("");
 
   const onAnalyze = useCallback(async () => {
     if (!uri) return;
@@ -36,30 +49,38 @@ export default function AnalyzePreview() {
     try {
       const result = await analyzeImageWithSpring(payload);
 
-      // FastAPI → Spring → 프론트: gemini_advice 배열이 옴
-      const item = result?.gemini_advice?.[0];
+      const info = result?.gemini_advice?.[0];
 
-      const object = item?.object ?? "알 수 없음";
-      const label = item?.label ?? "알 수 없음";
-      const instruction = item?.instruction ?? "처리 방법 정보 없음";
+      setObjectName(info?.object ?? "이 물체");
+      setLabel(info?.label ?? "");
+      setInstruction(info?.instruction ?? "");
 
-      // 🔥 confirm 화면으로 전달
-      router.replace({
-        pathname: "/(tabs)/analyze/confirm",
-        params: {
-          uri,
-          object,
-          label,
-          instruction,
-        },
-      });
+      setModalVisible(true);
     } catch (e) {
       console.log(e);
-      Alert.alert("오류", "분석 요청 중 문제가 발생했습니다.");
+      alert("AI 분석 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
   }, [uri]);
+
+  const onConfirmYes = () => {
+    setModalVisible(false);
+    router.replace({
+      pathname: "/(tabs)/analyze/confirm",
+      params: {
+        uri,
+        objectName,
+        label,
+        instruction,
+      },
+    });
+  };
+
+  const onConfirmNo = () => {
+    setModalVisible(false);
+    router.replace("/(tabs)/analyze");
+  };
 
   return (
       <KeyboardAvoidingView
@@ -78,9 +99,7 @@ export default function AnalyzePreview() {
                   <Image source={{ uri }} style={s.preview} resizeMode="contain" />
               ) : (
                   <View style={s.previewEmpty}>
-                    <Text style={s.previewEmptyText}>
-                      이미지 URI가 전달되지 않았습니다.
-                    </Text>
+                    <Text style={s.previewEmptyText}>이미지를 불러올 수 없습니다.</Text>
                   </View>
               )}
             </View>
@@ -90,11 +109,7 @@ export default function AnalyzePreview() {
                 onPress={onAnalyze}
                 disabled={!uri || loading}
             >
-              {loading ? (
-                  <ActivityIndicator color="#fff" />
-              ) : (
-                  <Text style={s.primaryText}>분석 시작</Text>
-              )}
+              <Text style={s.primaryText}>{loading ? "분석 중..." : "분석 시작"}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={s.secondaryBtn} onPress={() => router.back()}>
@@ -102,6 +117,33 @@ export default function AnalyzePreview() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* ========================
+          🔥 커스텀 모달
+      ========================= */}
+        <Modal
+            transparent
+            animationType="fade"
+            visible={modalVisible}
+            onRequestClose={() => setModalVisible(false)}
+        >
+          <View style={s.modalOverlay}>
+            <View style={s.modalBox}>
+              <Text style={s.modalTitle}>이 물체가 맞나요?</Text>
+              <Text style={s.modalObject}>{objectName}</Text>
+
+              <View style={s.modalBtnRow}>
+                <TouchableOpacity style={s.modalBtnNo} onPress={onConfirmNo}>
+                  <Text style={s.modalBtnTextNo}>아니오</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={s.modalBtnYes} onPress={onConfirmYes}>
+                  <Text style={s.modalBtnTextYes}>예</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
   );
 }
@@ -110,7 +152,7 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   centerWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
   header: { alignItems: "center", marginBottom: 14 },
-  title: { fontFamily: "Jua_400Regular", color: COLORS.text, fontSize: 30, marginTop: 2 },
+  title: { fontFamily: "Jua_400Regular", color: COLORS.text, fontSize: 30 },
   caption: { color: COLORS.sub, marginTop: 4, fontSize: 13 },
   card: {
     width: "100%",
@@ -137,6 +179,7 @@ const s = StyleSheet.create({
   preview: { width: "100%", height: "100%" },
   previewEmpty: { flex: 1, alignItems: "center", justifyContent: "center" },
   previewEmptyText: { color: COLORS.sub },
+
   primaryBtn: {
     height: 52,
     borderRadius: 14,
@@ -157,4 +200,54 @@ const s = StyleSheet.create({
     marginTop: 10,
   },
   secondaryText: { color: COLORS.text, fontWeight: "600", fontSize: 15 },
+
+  // 모달
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: COLORS.modalBg,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalBox: {
+    width: "80%",
+    maxWidth: 380,
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 22,
+    elevation: 5,
+  },
+  modalTitle: { fontSize: 20, fontWeight: "700", marginBottom: 12, textAlign: "center" },
+  modalObject: {
+    fontSize: 18,
+    color: COLORS.text,
+    textAlign: "center",
+    marginBottom: 22,
+  },
+  modalBtnRow: { flexDirection: "row", justifyContent: "space-between" },
+  modalBtnNo: {
+    flex: 1,
+    padding: 12,
+    marginRight: 8,
+    borderRadius: 10,
+    backgroundColor: "#e5e7eb",
+  },
+  modalBtnYes: {
+    flex: 1,
+    padding: 12,
+    marginLeft: 8,
+    borderRadius: 10,
+    backgroundColor: COLORS.primary,
+  },
+  modalBtnTextNo: {
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#374151",
+  },
+  modalBtnTextYes: {
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#fff",
+  },
 });
