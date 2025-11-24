@@ -1,18 +1,20 @@
-// app/(tabs)/analyze/progress.tsx
-import React, { useEffect, useMemo } from "react";
+import React, { useCallback, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
-  View, Text, StyleSheet, Platform, KeyboardAvoidingView,
-  Animated, Easing, Image,
+  View,
+  Text,
+  Image,
+  StyleSheet,
+  TouchableOpacity,
+  Platform,
+  KeyboardAvoidingView,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
+import { analyzeImageWithSpring } from "@/src/features/photos/api";
+import { ImagePayload } from "@/src/features/photos/uploader";
 
-// ❗️경로 별칭(@)이 프로젝트 최상단을 가리킨다고 가정했어요.
-// 별칭이 없으면 아래 import 대신 require("../../../../frontend/assets/characters/ssdamy.png") 처럼 상대경로로 바꿔주세요.
-// app/(tabs)/analyze/progress.tsx 기준 예시
-const logo = require("../../../../frontend/assets/characters/ssdamy.png");
-
-
-type Params = { uri?: string; label?: string };
+type Params = { uri?: string };
 
 const COLORS = {
   bg: "#F7F9FB",
@@ -23,99 +25,145 @@ const COLORS = {
   border: "#E2E8F0",
 };
 
-export default function AnalyzeProgress() {
+export default function AnalyzePreview() {
   const router = useRouter();
-  const { uri, label = "소주병" } = useLocalSearchParams<Params>();
+  const { uri } = useLocalSearchParams<Params>();
+  const [loading, setLoading] = useState(false);
 
-  // 4초 후 결과 화면으로 이동 (데모: 72~96%)
-  useEffect(() => {
-    const score = Math.round(72 + Math.random() * 24);
-    const t = setTimeout(() => {
-      router.replace(
-  `/(tabs)/analyze/confirm?uri=${encodeURIComponent(uri ?? "")}&label=${encodeURIComponent(label)}&score=${score}`
-);
-    }, 4000);
-    return () => clearTimeout(t);
-  }, [router, uri, label]);
+  const onAnalyze = useCallback(async () => {
+    if (!uri) return;
 
-  // 회전 애니메이션 (바깥 링만)
-  const spin = useMemo(() => new Animated.Value(0), []);
-  useEffect(() => {
-    Animated.loop(
-      Animated.timing(spin, {
-        toValue: 1,
-        duration: 1200,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      })
-    ).start();
-  }, [spin]);
-  const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "360deg"] });
+    setLoading(true);
+
+    const payload: ImagePayload = {
+      uri,
+      name: "photo.jpg",
+      type: "image/jpeg",
+    };
+
+    try {
+      const result = await analyzeImageWithSpring(payload);
+
+      // 🔥 Gemini 분석 결과에서 object, instruction 추출
+      const first = result?.gemini_advice?.[0];
+
+      const label = first?.object ?? "분류 실패";
+      const instruction = first?.instruction ?? "처리 방법을 가져오지 못했습니다.";
+
+      // 🔥 confirm 화면으로 결과 전달
+      router.replace({
+        pathname: "/(tabs)/analyze/confirm",
+        params: {
+          uri,
+          label,
+          instruction,
+        },
+      });
+    } catch (e) {
+      console.log(e);
+      Alert.alert("오류", "분석 요청 중 문제가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, [uri]);
 
   return (
-    <KeyboardAvoidingView style={s.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <View style={s.centerWrap}>
-        <View style={s.card}>
-          <View style={s.content}>
-            <Text style={s.title}>사진을 분석 중입니다</Text>
+      <KeyboardAvoidingView
+          style={s.container}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <View style={s.centerWrap}>
+          <View style={s.header}>
+            <Text style={s.title}>미리보기</Text>
+            <Text style={s.caption}>이미지를 확인하고 분석을 시작하세요</Text>
+          </View>
 
-            {/* 회전 링(1개) + 가운데 로고 */}
-            <Animated.View style={[s.spinnerWrap, { transform: [{ rotate }] }]}>
-              <View style={s.spinnerRing} />
-              <Image source={logo} style={s.logo} resizeMode="contain" />
-            </Animated.View>
+          <View style={s.card}>
+            <View style={s.previewWrap}>
+              {uri ? (
+                  <Image source={{ uri }} style={s.preview} resizeMode="contain" />
+              ) : (
+                  <View style={s.previewEmpty}>
+                    <Text style={s.previewEmptyText}>이미지 URI가 전달되지 않았습니다.</Text>
+                  </View>
+              )}
+            </View>
 
-            <Text style={s.caption}>잠시만 기다려 주세요…</Text>
+            <TouchableOpacity
+                style={[s.primaryBtn, (!uri || loading) && { opacity: 0.6 }]}
+                onPress={onAnalyze}
+                disabled={!uri || loading}
+            >
+              {loading ? (
+                  <ActivityIndicator color="#fff" />
+              ) : (
+                  <Text style={s.primaryText}>분석 시작</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={s.secondaryBtn} onPress={() => router.back()}>
+              <Text style={s.secondaryText}>뒤로가기</Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
   );
 }
-
-const SIZE = 160; // 링 지름
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
   centerWrap: { flex: 1, alignItems: "center", justifyContent: "center", padding: 20 },
+  header: { alignItems: "center", marginBottom: 14 },
+  title: {
+    fontFamily: "Jua_400Regular",
+    color: COLORS.text,
+    fontSize: 30,
+    marginTop: 2,
+  },
+  caption: { color: COLORS.sub, marginTop: 4, fontSize: 13 },
   card: {
     width: "100%",
     maxWidth: 520,
     backgroundColor: COLORS.card,
     borderRadius: 16,
-    padding: 24,
+    padding: 18,
     shadowColor: "#000",
     shadowOpacity: 0.06,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 10,
     elevation: 2,
   },
-  content: { alignItems: "center" },
-  title: { fontFamily: "Jua_400Regular", color: COLORS.text, fontSize: 24, marginBottom: 18 },
-
-  spinnerWrap: {
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
-    alignItems: "center",
-    justifyContent: "center",
+  previewWrap: {
+    width: "100%",
+    height: 380,
+    backgroundColor: "#F5F7FA",
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: COLORS.border,
     marginBottom: 14,
   },
-  // 바깥 링 1개만 보이도록: 전체 테두리는 옅은 회색, 위쪽만 primary로 칠해서 회전 효과
-  spinnerRing: {
-    position: "absolute",
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
-    borderWidth: 8,
+  preview: { width: "100%", height: "100%" },
+  previewEmpty: { flex: 1, alignItems: "center", justifyContent: "center" },
+  previewEmptyText: { color: COLORS.sub },
+  primaryBtn: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  primaryText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  secondaryBtn: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderWidth: 1,
     borderColor: COLORS.border,
-    borderTopColor: COLORS.primary, // 회전하며 보이는 포인트
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 10,
   },
-  // 로고는 중앙에
-  logo: {
-    width: SIZE * 0.46,
-    height: SIZE * 0.46,
-  },
-
-  caption: { color: COLORS.sub, marginTop: 8 },
+  secondaryText: { color: COLORS.text, fontWeight: "600", fontSize: 15 },
 });
