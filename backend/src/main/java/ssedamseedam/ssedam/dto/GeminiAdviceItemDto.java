@@ -1,10 +1,17 @@
 package ssedamseedam.ssedam.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class GeminiAdviceItemDto {
 
-    private String object;       // "plastic cup"
-    private String label;        // "plastic"
-    private String instruction;  // "Rinse and discard ..."
+    @JsonProperty("object")
+    private String object;
+
+    @JsonProperty("label")
+    private String label;
+
+    @JsonProperty("instruction")
+    private String instruction;
 
     public String getObject() {
         return object;

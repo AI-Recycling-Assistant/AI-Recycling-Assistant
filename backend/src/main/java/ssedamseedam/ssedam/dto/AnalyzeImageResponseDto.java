@@ -1,27 +1,33 @@
 package ssedamseedam.ssedam.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 public class AnalyzeImageResponseDto {
 
-    private List<GeminiAdviceItemDto> gemini_advice;
-    private String temp_path;
+    @JsonProperty("gemini_advice")
+    private List<GeminiAdviceItemDto> geminiAdvice;
+
+    @JsonProperty("temp_path")
+    private String tempPath;
+
+    @JsonProperty("model")
     private String model;
 
-    public List<GeminiAdviceItemDto> getGemini_advice() {
-        return gemini_advice;
+    public List<GeminiAdviceItemDto> getGeminiAdvice() {
+        return geminiAdvice;
     }
 
-    public void setGemini_advice(List<GeminiAdviceItemDto> gemini_advice) {
-        this.gemini_advice = gemini_advice;
+    public void setGeminiAdvice(List<GeminiAdviceItemDto> geminiAdvice) {
+        this.geminiAdvice = geminiAdvice;
     }
 
-    public String getTemp_path() {
-        return temp_path;
+    public String getTempPath() {
+        return tempPath;
     }
 
-    public void setTemp_path(String temp_path) {
-        this.temp_path = temp_path;
+    public void setTempPath(String tempPath) {
+        this.tempPath = tempPath;
     }
 
     public String getModel() {

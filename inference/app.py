@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse   # 🔥 추가
 from model import analyze_image
 
 app = FastAPI()
@@ -20,4 +21,6 @@ async def health():
 @app.post("/analyze-image")
 async def analyze_image_endpoint(image: UploadFile = File(...)):
     result = await analyze_image(image)
-    return result
+
+    # 🔥 반드시 JSONResponse로 감싸서 반환해야 함
+    return JSONResponse(content=result)

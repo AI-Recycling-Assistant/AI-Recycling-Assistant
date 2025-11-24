@@ -17,17 +17,16 @@ export async function buildImageFormData(
     // 웹은 Blob을 요구
     const resp = await fetch(image.uri);
     const blob = await resp.blob();
-    fd.append("imageFile", blob, image.name || "photo.jpg");
+    fd.append("image", blob, image.name || "photo.jpg");
   } else {
     // RN(native)는 파일 객체 형태로
     fd.append(
-      "imageFile",
-      {
-        // @ts-ignore: RN FormData 파일 파트
-        uri: image.uri,
-        name: image.name || "photo.jpg",
-        type: image.type || "image/jpeg",
-      } as any
+        "image",
+        {
+          uri: image.uri,
+          name: image.name || "photo.jpg",
+          type: image.type || "image/jpeg",
+        } as any
     );
   }
 

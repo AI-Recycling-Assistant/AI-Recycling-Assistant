@@ -1,96 +1,34 @@
-// src/features/photos/api.ts
-import { http } from "@/src/utils/http";
-import { withQuery } from "@/src/utils/query";
-import {
-  PhotoItem, Paginated, AnalysisSummary, AnalysisResult,
-  SourceType, TipsResponse, CropRequest, RotateRequest
-} from "./types";
-import { buildImageFormData, ImagePayload } from "./uploader";
+import { Platform } from "react-native";
+import type { ImagePayload } from "./uploader";
 
-// --- 페이지 진입(뷰 용) ---
-export async function openAiPhotosHome() {
-  // GET /ai-photos (서버에서 필요하면 메타 반환)
-  return http<{ ok: boolean; }>("/ai-photos", { method: "GET" });
-}
+// 🔥 Spring 서버로 이미지 업로드 + 분석 결과 받기
+export async function analyzeImageWithSpring(file: ImagePayload) {
+  const fd = new FormData();
 
-// --- 업로드 ---
-export async function uploadFromCamera(img: ImagePayload, authToken?: string) {
-  const fd = buildImageFormData(img, { source: "camera" });
-  return http<PhotoItem>("/photos", { method: "POST", body: fd, authToken });
-}
+  if (Platform.OS === "web") {
+    // 🔥 웹은 URI 그대로 못보냄 → Blob 변환
+    const resp = await fetch(file.uri);
+    const blob = await resp.blob();
 
-export async function uploadFromGallery(img: ImagePayload, authToken?: string) {
-  const fd = buildImageFormData(img, { source: "gallery" });
-  return http<PhotoItem>("/photos", { method: "POST", body: fd, authToken });
-}
+    fd.append("image", blob, file.name || "photo.jpg");
+  } else {
+    // 🔥 iOS / Android
+    fd.append("image", {
+      uri: file.uri,
+      name: file.name || "photo.jpg",
+      type: file.type || "image/jpeg",
+    } as any);
+  }
 
-// --- 목록/상세/삭제 ---
-export async function listPhotos(params: { page?: number; limit?: number } = {}, authToken?: string) {
-  const path = withQuery("/photos", { page: params.page, limit: params.limit });
-  return http<Paginated<PhotoItem>>(path, { method: "GET", authToken });
-}
+  const SPRING_SERVER = "http://172.26.131.41:8080/api/ai/analyze-image";
 
-export async function getPhoto(photoId: string, authToken?: string) {
-  return http<PhotoItem>(`/photos/${photoId}`, { method: "GET", authToken });
-}
-
-export async function deletePhoto(photoId: string, authToken?: string) {
-  return http<{ ok: boolean }>(`/photos/${photoId}`, { method: "DELETE", authToken });
-}
-
-// --- 편집(크롭/회전) ---
-export async function cropPhoto(photoId: string, payload: CropRequest, authToken?: string) {
-  return http<PhotoItem>(`/photos/${photoId}/edit/crop`, {
+  const resp = await fetch(SPRING_SERVER, {
     method: "POST",
-    body: payload,
-    authToken,
-  });
-}
-
-export async function rotatePhoto(photoId: string, payload: RotateRequest, authToken?: string) {
-  return http<PhotoItem>(`/photos/${photoId}/edit/rotate`, {
-    method: "POST",
-    body: payload,
-    authToken,
-  });
-}
-
-// --- 분석 시작/상태/결과 ---
-export async function requestAnalysis(photoId: string, authToken?: string) {
-  // POST /photos/{photo_id}/analyses → { analysisId }
-  return http<{ analysisId: string }>(`/photos/${photoId}/analyses`, {
-    method: "POST",
-    authToken,
-  });
-}
-
-export async function getAnalysisStatus(analysisId: string, authToken?: string) {
-  return http<AnalysisSummary>(`/analyses/${analysisId}`, { method: "GET", authToken });
-}
-
-export async function getAnalysisResult(analysisId: string, authToken?: string) {
-  return http<AnalysisResult>(`/analyses/${analysisId}/result`, { method: "GET", authToken });
-}
-
-// --- 결과 뷰(원본/라벨/최종) 렌더 ---
-export async function renderPhotoView(photoId: string, view: "original" | "labels" | "result", authToken?: string) {
-  const path = withQuery(`/photos/${photoId}/render`, { view });
-  // 서버가 이미지 URL/HTML 스니펫/JSON을 어떤 형식으로 주는지에 맞춰 타입 지정
-  return http<any>(path, { method: "GET", authToken });
-}
-
-// --- 재촬영 교체(PUT /photos/{photo_id}) ---
-export async function replacePhoto(photoId: string, img: ImagePayload, authToken?: string) {
-  const fd = buildImageFormData(img);
-  return http<PhotoItem>(`/photos/${photoId}`, {
-    method: "PUT",
     body: fd,
-    authToken,
+    // 절대 넣지 말 것: headers: { "Content-Type": "multipart/form-data" }
   });
+
+  return resp.json();
 }
 
-// --- 재촬영 팁(GET /tips?context=retake) ---
-export async function getRetakeTips(authToken?: string) {
-  const path = withQuery("/tips", { context: "retake" });
-  return http<TipsResponse>(path, { method: "GET", authToken });
-}
+
