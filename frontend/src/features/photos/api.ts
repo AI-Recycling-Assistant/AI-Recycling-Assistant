@@ -20,7 +20,11 @@ export async function analyzeImageWithSpring(file: ImagePayload) {
     } as any);
   }
 
-  const SPRING_SERVER = "http://172.26.131.41:8080/api/ai/analyze-image";
+  const SPRING_SERVER =
+      Platform.OS === "web"
+          ? "http://localhost:3005/proxy/analyze-image"
+          : "http://172.26.131.41:8080/api/ai/analyze-image";
+
 
   const resp = await fetch(SPRING_SERVER, {
     method: "POST",
